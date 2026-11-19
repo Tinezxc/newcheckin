@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Service Requests & Work Orders | CMDI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="CSS/staff-theme.css">
+<link rel="stylesheet" href="CSS/staff-dashboard.css">
+<link rel="stylesheet" href="CSS/notification.css">
+<link rel="stylesheet" href="CSS/staff-requests.css">
+</head>
+<body>
+<div class="dashboard-layout">
+  <header class="mobile-topbar">
+    <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false"><span></span><span></span><span></span></button>
+    <span class="mobile-brand">CMDI HOTEL</span>
+    <div class="topbar-avatar">ST</div>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo"><div class="logo-box">C</div><div class="logo-text"><span class="logo-title">CMDI</span><span class="logo-subtitle">HOTEL OPERATIONS</span></div></div>
+    <div class="role-switcher">
+      <label for="roleSelect" class="role-label">Assigned role</label>
+      <div class="role-select-wrap">
+        <select id="roleSelect" aria-label="Assigned staff role">
+          <option value="front-desk">Front Desk</option>
+          <option value="housekeeping">Housekeeping</option>
+          <option value="maintenance">Maintenance</option>
+          <option value="manager">Manager</option>
+        </select>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path></svg>
+      </div>
+      <small class="role-lock-note">Your role is managed by CMDI.</small>
+    </div>
+    <nav class="sidebar-nav" aria-label="Main navigation"><span class="nav-section-title">OPERATIONS</span></nav>
+    <div class="sidebar-footer">
+      <div class="staff-chip"><div class="staff-avatar">ST</div><div class="staff-info"><span class="staff-name">Staff</span><span class="staff-role" id="staffRoleLabel">Staff</span></div></div>
+      <a href="index.html" class="nav-item logout">Sign out</a>
+    </div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <main class="main-content">
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="app-eyebrow">CMDI HOTEL OPERATIONS</span>
+        <h1 class="app-title">Service Requests & Work Orders</h1>
+        <p class="app-subtitle">Assigned role: <strong id="roleBreadcrumb">Verifying…</strong> · <span id="lastUpdated">Loading live data…</span></p>
+      </div>
+      <div class="topbar-actions">
+        <div class="topbar-icon-wrap">
+          <button class="icon-btn has-count" id="notifBtn" type="button" aria-label="Notifications"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg><span class="icon-badge" hidden>0</span></button>
+          <div class="notif-menu" id="notifMenu" hidden><div class="notif-menu-header"><strong>Notifications</strong><button class="link-muted" type="button">Mark all read</button></div><ul class="notif-menu-list"><li class="notif-empty">Loading…</li></ul></div>
+        </div>
+        <button class="topbar-avatar" type="button" aria-label="Staff account">ST</button>
+      </div>
+    </header>
+
+    <div class="dashboard-content phase4-content">
+      <section class="phase4-welcome">
+        <div><span class="welcome-kicker">HOUSEKEEPING & MAINTENANCE</span><h2>Work queue</h2><p>Assign requests, track staff progress, and manage vacant-room upkeep.</p></div>
+        <button class="btn btn-outline" id="refreshTasks" type="button">Refresh</button>
+      </section>
+
+      <section class="phase4-kpis" aria-label="Task summary">
+        <article class="phase4-kpi"><span>Open tasks</span><strong id="kpiOpen">—</strong><small>Visible to your role</small></article>
+        <article class="phase4-kpi"><span>Unassigned</span><strong id="kpiUnassigned">—</strong><small>Waiting for dispatch</small></article>
+        <article class="phase4-kpi"><span>In progress</span><strong id="kpiProgress">—</strong><small>Currently being handled</small></article>
+        <article class="phase4-kpi"><span>Completed</span><strong id="kpiCompleted">—</strong><small>Finished work</small></article>
+      </section>
+
+      <section class="card phase4-card" aria-labelledby="taskHeading">
+        <header class="card-header phase4-card-header"><div><span class="phase4-eyebrow">SERVICE REQUESTS</span><h3 id="taskHeading">Task assignments</h3></div>
+          <div class="phase4-tools"><input id="taskSearch" type="search" placeholder="Search request or room…" aria-label="Search requests"><select id="statusFilter" aria-label="Filter by status"><option value="all">All visible</option><option value="pending">Unassigned</option><option value="assigned">Assigned</option><option value="in_progress">In progress</option><option value="completed">Completed</option></select></div>
+        </header>
+        <div id="taskList" class="phase4-task-list"><div class="phase4-loading">Loading service requests…</div></div>
+        <footer class="phase4-foot"><span id="taskCount">Loading tasks…</span><span>Changes are saved securely in Supabase</span></footer>
+      </section>
+
+      <section class="card phase4-card" aria-labelledby="roomHeading">
+        <header class="card-header phase4-card-header"><div><span class="phase4-eyebrow">ROOM UPKEEP</span><h3 id="roomHeading">Cleaning & maintenance board</h3></div><span class="count-badge count-blue" id="roomCount">0 rooms</span></header>
+        <p class="phase4-helper" id="roomHelp">Only the assigned Housekeeping or Maintenance role can change room upkeep status. Rooms with active allocations or pending bookings are protected.</p>
+        <div id="roomList" class="phase4-room-grid"><div class="phase4-loading">Loading room statuses…</div></div>
+      </section>
+      <footer class="dashboard-footer"><span>CMDI · Staff console</span><span>© 2026 CMDI Hotel Check-In</span></footer>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/staff-core.js" defer></script>
+<script src="js/rbac.js" defer></script>
+<script src="js/staff-requests.js" defer></script>
+<script src="js/notification.js" defer></script>
+</body>
+</html>
