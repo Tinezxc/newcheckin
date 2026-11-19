@@ -1,6 +1,6 @@
 /* ==========================================================
-   HAVEN — Staff Role-Based Access Control (RBAC)
-   Shared by every staff page. Do not edit per-page.
+   CMDI — Staff Role-Based Access Control (RBAC)
+   Shared by every CMDI staff page. Database profile role is authoritative.
    ========================================================== */
 (function () {
     'use strict';
@@ -14,7 +14,7 @@
             name: 'Staff',
             initials: 'ST',
             home: 'staff-dashboard.html',
-            nav: ['dashboard', 'guests', 'rooms', 'checkin', 'requests'],
+            nav: ['dashboard', 'guests', 'scanner', 'rooms', 'checkin', 'requests'],
             // What the role can DO (used by element gating and data filtering)
             permissions: {
                 'dashboard.view': true,
@@ -26,6 +26,8 @@
                 'checkin.view': true,
                 'checkin.do': true,
                 'checkin.force': false,
+                'bookings.approve': true,
+                'registration.scan': true,
                 'requests.view': 'all',      // 'all' or 'housekeeping' or false
                 'requests.assign': true,
                 'reports.view': false,
@@ -48,6 +50,8 @@
                 'checkin.view': false,
                 'checkin.do': false,
                 'checkin.force': false,
+                'bookings.approve': false,
+                'registration.scan': false,
                 'requests.view': 'housekeeping',
                 'requests.assign': false,
                 'reports.view': false,
@@ -70,6 +74,8 @@
                 'checkin.view': false,
                 'checkin.do': false,
                 'checkin.force': false,
+                'bookings.approve': false,
+                'registration.scan': false,
                 'requests.view': 'maintenance',
                 'requests.assign': false,
                 'reports.view': false,
@@ -92,6 +98,8 @@
                 'checkin.view': true,
                 'checkin.do': true,
                 'checkin.force': true,
+                'bookings.approve': false,
+                'registration.scan': false,
                 'requests.view': 'all',
                 'requests.assign': true,
                 'reports.view': true,
@@ -106,6 +114,7 @@
     const NAV_ITEMS = {
         dashboard: { label: 'Dashboard',          href: 'staff-dashboard.html',        icon: 'grid' },
         guests:    { label: 'Guests',             href: 'staff-guests.html',           icon: 'users' },
+        scanner:   { label: 'QR Scanner',         href: 'staff-qr-scanner.html',       icon: 'qr' },
         rooms:     { label: 'Rooms',              href: 'staff-rooms.html',            icon: 'home' },
         checkin:   { label: 'Check-in / out',     href: 'staff-checkin.html',          icon: 'check' },
         requests:  { label: 'Service requests',   href: 'staff-requests.html',         icon: 'chat', badge: true },
@@ -119,6 +128,7 @@
     const ICONS = {
         grid: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>`,
         users: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
+        qr: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM20 14v2M14 20h2M20 20h1"></path></svg>`,
         home: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
         check: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`,
         chat: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
@@ -127,20 +137,31 @@
     };
 
     /* ==========================================
-       ROLE STATE — the database profile is authoritative.
-       Assigned roles are display-only and cannot be changed in the browser.
+       ROLE STATE (verified against the database)
+       The database is the only source of role authority. No client-side
+       role preview, role switching, or local role cache is used.
        ========================================== */
     const STAFF_ROLES = Object.keys(ROLES);
-    const DEFAULT_ROLE = 'housekeeping';
-    const state = { realRole: null, userId: null, name: 'Staff', initials: 'ST', verified: false, denied: false };
+    const LEGACY_ROLE_CACHE_KEY = 'haven_role_cache';
+    const LEGACY_VIEW_AS_KEY = 'haven_view_as';
+    const state = {
+        realRole: null,
+        userId: null,
+        name: 'Staff',
+        initials: 'ST',
+        verified: false,
+        denied: false
+    };
 
-    function clearCache() {
-        try { localStorage.removeItem('haven_role_cache'); } catch (e) { /* storage may be blocked */ }
-        try { sessionStorage.removeItem('haven_view_as'); } catch (e) { /* legacy preview key */ }
-        try { sessionStorage.removeItem('haven_rbac_reload'); } catch (e) { /* legacy reload key */ }
+    function clearLegacyRoleState() {
+        try { localStorage.removeItem(LEGACY_ROLE_CACHE_KEY); } catch (e) { /* storage may be blocked */ }
+        try { sessionStorage.removeItem(LEGACY_VIEW_AS_KEY); } catch (e) { /* storage may be blocked */ }
     }
-    function effectiveRole() {
-        return state.verified && ROLES[state.realRole] ? state.realRole : DEFAULT_ROLE;
+
+    function currentNavKey() {
+        const page = (window.location.pathname.split('/').pop() || 'staff-dashboard.html').toLowerCase();
+        const match = Object.entries(NAV_ITEMS).find(([, item]) => item.href.toLowerCase() === page);
+        return match ? match[0] : null;
     }
 
     function makeInitials(name) {
@@ -207,109 +228,104 @@
 
     /* ---------- sign out (also ends the Supabase session) ---------- */
     async function signOut() {
-        clearCache();
+        clearLegacyRoleState();
         try { if (window.supabaseClient) await window.supabaseClient.auth.signOut(); } catch (e) { /* ignore */ }
         window.location.href = 'index.html';
     }
 
-    /* ---------- verify the signed-in staff account against Supabase ---------- */
-    function withTimeout(promise, timeoutMs, message) {
-        let timer;
-        const timeout = new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-        });
-        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-    }
-
+    /* ---------- the check: who is signed in, and what is their role? ---------- */
     async function verifyAccess() {
         const db = window.supabaseClient;
-        if (!db || !db.auth) {
-            state.denied = true;
-            showGate({ title: 'Cannot connect to Supabase', warn: true, icon: 'lock',
-                message: 'The Supabase client did not load. Check js/supabase-client.js and the script order.',
+        if (!db) {
+            showGate({ title: 'Cannot connect', warn: true, icon: 'lock',
+                message: 'The connection to the server is not available. Check that the Supabase scripts are on this page.',
                 actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() }] });
-            return false;
+            return;
         }
 
-        try {
-            const sessionResult = await withTimeout(
-                db.auth.getSession(), 15000,
-                'Supabase session check timed out. Check your connection and Supabase project status.'
-            );
-            if (sessionResult.error) throw sessionResult.error;
-            const session = sessionResult.data?.session;
-            if (!session?.user?.id) {
-                state.denied = true;
-                clearCache();
-                const page = window.location.pathname.split('/').pop() || '';
-                window.location.replace('index.html' + (/^staff-[a-z]+\.html$/.test(page) ? '?next=' + encodeURIComponent(page) : ''));
-                return false;
-            }
+        let session = null;
+        try { ({ data: { session } } = await db.auth.getSession()); } catch (e) { session = null; }
+        if (!session) {
+            const page = window.location.pathname.split('/').pop() || '';
+            window.location.href = 'index.html' + (/^staff-[a-z]+\.html$/.test(page) ? '?next=' + encodeURIComponent(page) : '');
+            return;
+        }
 
-            // These columns are confirmed in the CMDI profiles schema.
-            const profileResult = await withTimeout(
-                db.from('profiles')
-                    .select('id,full_name,role,status')
-                    .eq('id', session.user.id)
-                    .maybeSingle(),
-                15000,
-                'Profile verification timed out. Check the profiles RLS policy and verified Login OTP session.'
-            );
-            if (profileResult.error) throw profileResult.error;
-            const profile = profileResult.data;
-            if (!profile) throw new Error('No profiles record was found for this signed-in account.');
+        const { data: p, error } = await db.from('profiles').select('*').eq('id', session.user.id).single();
+        if (error || !p) {
+            showGate({ title: 'We could not check your access', warn: true,
+                message: 'Please try again. If this keeps happening, contact a manager.',
+                actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() },
+                          { label: 'Sign out', onClick: signOut }] });
+            return;
+        }
 
-            const role = String(profile.role || '').trim().toLowerCase();
-            if (!STAFF_ROLES.includes(role)) {
-                state.denied = true;
-                clearCache();
-                showGate({ title: 'Staff access required', icon: 'lock',
-                    message: `The signed-in profile has role "${role || 'not assigned'}". Ask CMDI management to assign an operational staff role.`,
-                    actions: [{ label: 'Go to my dashboard', primary: true, href: 'client-dashboard.html' },
-                              { label: 'Sign out', onClick: signOut }] });
-                return false;
-            }
+        state.userId = session.user.id;
+        state.name = p.full_name || 'Staff';
+        state.initials = makeInitials(state.name);
+        Object.values(ROLES).forEach((r) => { r.name = state.name; r.initials = state.initials; });
 
-            const status = String(profile.status || 'active').trim().toLowerCase();
-            if (status !== 'active') {
-                state.denied = true;
-                clearCache();
-                showGate({ title: 'Staff account unavailable', icon: 'lock',
-                    message: `Your staff account status is "${status}". Contact CMDI management.`,
-                    actions: [{ label: 'Sign out', primary: true, onClick: signOut }] });
-                return false;
-            }
-
-            state.userId = session.user.id;
-            state.name = String(profile.full_name || 'Staff').trim() || 'Staff';
-            state.initials = makeInitials(state.name);
-            state.realRole = role;
-            state.verified = true;
-            state.denied = false;
-            Object.values(ROLES).forEach((item) => {
-                item.name = state.name;
-                item.initials = state.initials;
-            });
-
-            hideGate();
-            RBAC.applyIdentity();
-            RBAC.applyRoleSwitcher();
-            RBAC.applyLogout();
-            return true;
-        } catch (error) {
+        const expired = p.access_expires_at && new Date(p.access_expires_at) < new Date();
+        if (p.status === 'suspended' || expired) {
             state.denied = true;
-            state.verified = false;
-            state.realRole = null;
-            const message = error?.message || 'An unexpected error occurred while verifying your staff account.';
-            console.error('[CMDI RBAC] Assigned-role verification failed:', error);
-            showGate({ title: 'Unable to verify assigned role', warn: true, icon: 'lock',
-                message,
-                actions: [
-                    { label: 'Retry verification', primary: true, onClick: () => window.location.reload() },
-                    { label: 'Sign out', onClick: signOut }
-                ] });
-            return false;
+            clearLegacyRoleState();
+            showGate({ title: expired ? 'Access expired' : 'Account suspended', icon: 'lock',
+                message: expired ? 'Your access period has ended. Please contact an administrator.'
+                                 : 'This account has been suspended. Please contact an administrator.',
+                actions: [{ label: 'Sign out', primary: true, onClick: signOut }] });
+            return;
         }
+
+        const role = STAFF_ROLES.includes(p.role) ? p.role : null;
+        if (!role) {
+            state.denied = true;
+            clearLegacyRoleState();
+            showGate({ title: 'Staff area', icon: 'lock',
+                message: 'This part of CMDI is for authorized staff only. Your account does not have a staff role.',
+                actions: [{ label: 'Go to my dashboard', primary: true, href: 'client-dashboard.html' },
+                          { label: 'Sign out', onClick: signOut }] });
+            return;
+        }
+
+        // Confirm the account is usable using the existing SECURITY DEFINER helper.
+        // This prevents a stale or manually edited browser value from granting access.
+        let staffCheck;
+        try {
+            const result = await db.rpc('is_staff');
+            if (result.error) throw result.error;
+            staffCheck = result.data;
+        } catch (checkError) {
+            console.error('CMDI staff authorization check failed:', checkError);
+            state.denied = true;
+            clearLegacyRoleState();
+            showGate({ title: 'Unable to verify staff access', warn: true,
+                message: 'CMDI could not verify your staff permissions. Please try again or contact the Manager.',
+                actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() },
+                          { label: 'Sign out', onClick: signOut }] });
+            return;
+        }
+
+        if (staffCheck !== true) {
+            state.denied = true;
+            clearLegacyRoleState();
+            showGate({ title: 'Staff access unavailable', icon: 'lock',
+                message: 'Your account is not currently authorized for staff access. Please contact the Manager.',
+                actions: [{ label: 'Sign out', primary: true, onClick: signOut }] });
+            return;
+        }
+
+        state.realRole = role;
+        state.verified = true;
+        hideGate();
+
+        // Direct URL access is checked as well as sidebar visibility.
+        const activeKey = currentNavKey();
+        if (activeKey && !RBAC.guardPage(activeKey)) return;
+
+        RBAC.applyIdentity();
+        RBAC.applySidebar(activeKey);
+        RBAC.applyElementGating();
+        RBAC.applyLogout();
     }
 
     /* ==========================================
@@ -319,25 +335,27 @@
         ROLES,
         NAV_ITEMS,
 
-        /* --- Current role --- */
-        getRole() { return effectiveRole(); },
+        /* --- Current role: always the verified database role --- */
+        getRole() { return state.verified ? state.realRole : null; },
         realRole() { return state.verified ? state.realRole : null; },
         isManager() { return state.verified && state.realRole === 'manager'; },
         isViewingAs() { return false; },
+        // Kept only as a compatibility stub for older page scripts. Role changes are never allowed here.
         setRole() { return false; },
-        getProfile() { return ROLES[effectiveRole()]; },
+        getProfile() { return state.verified && state.realRole ? ROLES[state.realRole] : null; },
         signOut() { return signOut(); },
-        ready: null,   // set below: resolves when the database check has finished
+        ready: null,
         can(perm) {
-            const p = this.getProfile().permissions;
-            return p[perm] === true;
+            const profile = this.getProfile();
+            return !!profile && profile.permissions[perm] === true;
         },
         canView(navKey) {
-            return this.getProfile().nav.includes(navKey);
+            const profile = this.getProfile();
+            return !!profile && profile.nav.includes(navKey);
         },
-        /* Data filter helpers */
         requestsScope() {
-            return this.getProfile().permissions['requests.view'];
+            const profile = this.getProfile();
+            return profile ? profile.permissions['requests.view'] : false;
         },
 
         /* ==========================================
@@ -347,6 +365,7 @@
             const nav = document.querySelector('.sidebar-nav');
             if (!nav) return;
             const role = this.getProfile();
+            if (!role) return;
 
             // Remove any existing nav items
             nav.querySelectorAll('.nav-item[data-nav-key]').forEach((el) => el.remove());
@@ -369,7 +388,6 @@
                 const item = NAV_ITEMS[key];
                 if (!item) return;
 
-                const isManagerOnly = (key === 'reports' || key === 'settings');
                 const isActive = key === activeKey;
 
                 const a = document.createElement('a');
@@ -388,24 +406,6 @@
                 nav.appendChild(a);
             });
 
-            // Also add disabled-but-visible items for Front desk (they see Reports/Settings greyed out)
-            if (role.label === 'Front desk') {
-                ['reports', 'settings'].forEach((key) => {
-                    const item = NAV_ITEMS[key];
-                    const a = document.createElement('a');
-                    a.href = '#';
-                    a.className = 'nav-item';
-                    a.dataset.navKey = key;
-                    a.setAttribute('aria-disabled', 'true');
-                    a.setAttribute('title', 'Manager access only');
-                    a.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        RBAC.toast('error', 'Manager access only', 'This section requires manager permissions.');
-                    });
-                    a.innerHTML = `${ICONS[item.icon]} ${item.label}`;
-                    nav.appendChild(a);
-                });
-            }
         },
 
         /* Count of requests visible to a role (used for the sidebar badge) */
@@ -420,8 +420,9 @@
            ========================================== */
         applyIdentity() {
             const role = this.getProfile();
-            const setText = (selector, value) => {
-                document.querySelectorAll(selector).forEach((element) => { element.textContent = value; });
+            if (!role) return;
+            const setText = (sel, text) => {
+                document.querySelectorAll(sel).forEach((el) => (el.textContent = text));
             };
             setText('.staff-name', state.name);
             setText('#staffRoleLabel', role.label);
@@ -430,45 +431,16 @@
             setText('.topbar-avatar', state.initials);
             setText('.staff-avatar', state.initials);
             setText('.mobile-topbar .topbar-avatar', state.initials);
-            if (document.body) document.body.dataset.role = state.realRole || '';
+            document.body.dataset.role = state.realRole;
         },
 
-        /* Assigned role display — supports legacy select and Phase 2 text label. */
-        applyRoleSwitcher() {
-            const role = this.getProfile();
-            const assignedValue = document.getElementById('assignedRoleValue');
-            const label = document.querySelector('.role-label');
-            if (assignedValue) assignedValue.textContent = role.label;
-            if (label) label.textContent = 'Assigned role';
-
-            const select = document.getElementById('roleSelect');
-            if (!select) return;
-            Object.entries(ROLES).forEach(([key, item]) => {
-                if (!select.querySelector(`option[value="${key}"]`)) {
-                    const option = document.createElement('option');
-                    option.value = key;
-                    option.textContent = item.label;
-                    select.appendChild(option);
-                }
-            });
-            select.value = state.realRole || '';
-            select.disabled = true;
-            select.setAttribute('aria-disabled', 'true');
-            select.title = 'Your assigned role is managed by CMDI management';
-            select.onchange = null;
-
-            const wrap = select.closest('.role-select-wrap');
-            if (wrap) {
-                wrap.classList.add('is-locked');
-                const icon = wrap.querySelector('svg');
-                if (icon) {
-                    icon.setAttribute('aria-hidden', 'true');
-                    icon.innerHTML = '<rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path>';
-                }
-            }
+        /* ==========================================
+           APPLY: immutable assigned-role display
+           ========================================== */
+        applyAssignedRole() {
+            const value = document.getElementById('assignedRoleValue');
+            if (value && this.getProfile()) value.textContent = this.getProfile().label;
         },
-
-        applyAssignedRole() { this.applyRoleSwitcher(); },
 
         /* ==========================================
            APPLY: sign-out links really end the session
@@ -490,7 +462,7 @@
         applyElementGating() {
             const role = this.getRole();
             document.querySelectorAll('[data-requires]').forEach((el) => {
-                const roles = el.dataset.requires.split(',').map((s) => s.trim());
+                const roles = el.dataset.requires.split(/[|,]/).map((s) => s.trim());
                 if (roles.includes(role)) {
                     el.removeAttribute('hidden');
                     el.removeAttribute('aria-disabled');
@@ -500,11 +472,21 @@
                 }
             });
             document.querySelectorAll('[data-requires-any]').forEach((el) => {
-                const roles = el.dataset.requiresAny.split(',').map((s) => s.trim());
+                const roles = el.dataset.requiresAny.split(/[|,]/).map((s) => s.trim());
                 if (roles.includes(role)) {
                     el.removeAttribute('hidden');
                 } else {
                     el.setAttribute('hidden', '');
+                }
+            });
+            document.querySelectorAll('[data-permission]').forEach((el) => {
+                const allowed = this.can(el.dataset.permission.trim());
+                if (allowed) {
+                    el.removeAttribute('hidden');
+                    el.removeAttribute('aria-disabled');
+                } else {
+                    el.setAttribute('hidden', '');
+                    el.setAttribute('aria-disabled', 'true');
                 }
             });
         },
@@ -516,10 +498,18 @@
            a "No access" screen.
            ========================================== */
         guardPage(navKey) {
+            if (!state.verified || !state.realRole) return false;
             if (this.canView(navKey)) return true;
-            // Build No-access UI
+            // Build a clear no-access state. On pages without the shared layout,
+            // use the same full-screen RBAC gate instead of leaving the page exposed.
             const layout = document.querySelector('.dashboard-layout');
-            if (!layout) return false;
+            if (!layout) {
+                showGate({ title: 'No access', icon: 'lock',
+                    message: `Your assigned role (${ROLES[state.realRole].label}) cannot access this section.`,
+                    actions: [{ label: 'Go to Dashboard', primary: true, href: ROLES[state.realRole].home },
+                              { label: 'Sign out', onClick: signOut }] });
+                return false;
+            }
             const denied = document.createElement('section');
             denied.className = 'rbac-denied';
             denied.innerHTML = `
@@ -559,6 +549,11 @@
                 document.head.appendChild(style);
             }
             return false;
+        },
+
+        guardCurrentPage() {
+            const navKey = currentNavKey();
+            return navKey ? this.guardPage(navKey) : true;
         },
 
         /* ==========================================
@@ -704,11 +699,12 @@
            BOOTSTRAP — call once per page
            ========================================== */
         init({ active } = {}) {
-            if (!state.verified || state.denied) return false;
+            if (state.denied || !state.verified) return false;
             if (active && !this.guardPage(active)) return false;
-            this.applySidebar(active);
+            if (!active && !this.guardCurrentPage()) return false;
+            this.applySidebar(active || currentNavKey());
             this.applyIdentity();
-            this.applyRoleSwitcher();
+            this.applyAssignedRole();
             this.applyElementGating();
             this.applyLogout();
             return true;
@@ -718,14 +714,14 @@
     window.RBAC = RBAC;
 
     /* ==========================================
-       START: verify the assigned role from Supabase on every staff page load.
+       START: use the cached role right away, then verify with the database
        ========================================== */
     function start() {
+        clearLegacyRoleState();
         state.realRole = null;
         state.verified = false;
-        state.denied = false;
-        showGate({ title: 'Verifying assigned role…', icon: 'spinner',
-            message: 'CMDI is checking your signed-in staff profile.' });
+        showGate({ title: 'Checking your access…', icon: 'spinner',
+            message: 'One moment while CMDI confirms your assigned staff role.' });
         RBAC.ready = verifyAccess();
     }
     if (document.body) start();
