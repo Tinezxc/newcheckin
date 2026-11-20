@@ -118,3 +118,67 @@ input::placeholder, textarea::placeholder { color: #8a948d; }
     html { scroll-behavior: auto; }
     .skeleton-row, .haven-dialog, .haven-dialog-overlay { animation: none !important; transition: none !important; }
 }
+
+/* ---------- CMDI immutable assigned-role display (shared across staff pages) ---------- */
+.role-switcher {
+    padding: 10px;
+    margin-bottom: 14px;
+    border-radius: var(--radius, 10px);
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.08);
+}
+.role-switcher .role-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-sidebar-muted, #a8b8b0);
+}
+.role-switcher .role-select-wrap.is-locked {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,.18);
+    border-radius: 7px;
+    background: rgba(255,255,255,.08);
+    color: #f1f4ef;
+    font-size: 12px;
+    font-weight: 600;
+    box-sizing: border-box;
+    cursor: not-allowed;
+    user-select: none;
+}
+.role-switcher .role-select-wrap.is-locked .assigned-role-value {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    color: inherit;
+    line-height: 1.35;
+}
+.role-switcher .role-select-wrap.is-locked .role-lock-icon,
+.role-switcher .role-select-wrap.is-locked svg {
+    position: static !important;
+    top: auto !important;
+    right: auto !important;
+    transform: none !important;
+    display: block;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    color: var(--text-sidebar-muted, #a8b8b0);
+    pointer-events: none;
+}
+.role-switcher .role-lock-note {
+    display: block;
+    margin-top: 5px;
+    color: var(--text-sidebar-muted, #a8b8b0);
+    font-size: 10px;
+    line-height: 1.4;
+}
+.role-switcher select#roleSelect { display: none !important; }

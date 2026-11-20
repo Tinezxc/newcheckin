@@ -1,517 +1,547 @@
-document.addEventListener('DOMContentLoaded', () => {
+/* ==========================================================
+   CMDI PHASE 6 — LIVE MANAGER REPORTS + AUDIT TRAIL
+   Uses manager-only SECURITY DEFINER RPCs. No demo/sample data.
+   ========================================================== */
+(() => {
+    'use strict';
 
-    /* ==========================================
-       ROLE + ACCESS CONTROL
-       ========================================== */
-    const roleSelect = document.getElementById('roleSelect');
-    const accessDenied = document.getElementById('accessDenied');
-    const reportsContent = document.getElementById('reportsContent');
-    const staffRoleLabel = document.getElementById('staffRoleLabel');
-    const roleBreadcrumb = document.getElementById('roleBreadcrumb');
-    const staffNameEl = document.querySelector('.staff-name');
-    const staffAvatarEl = document.querySelector('.staff-avatar');
-    const topbarAvatar = document.querySelector('.topbar-avatar');
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+    const db = () => window.supabaseClient || null;
 
-    const ROLE_LABELS = { 'front-desk': 'Front desk', 'housekeeping': 'Housekeeping', 'manager': 'Manager' };
-    const STAFF_BY_ROLE = {
-        'front-desk': { name: 'Marco Cruz', initials: 'MC' },
-        'housekeeping': { name: 'Joy Lim', initials: 'JL' },
-        'manager': { name: 'Ravi Batra', initials: 'RB' }
+    const state = {
+        start: null,
+        end: null,
+        reports: null,
+        auditEntries: [],
+        auditTotal: 0,
+        auditOffset: 0,
+        auditLimit: 50,
+        auditSearch: '',
+        loading: false,
+        auditLoading: false,
+        searchTimer: null
     };
 
-    function applyRole(role) {
-        document.body.dataset.role = role;
-        staffRoleLabel.textContent = ROLE_LABELS[role];
-        roleBreadcrumb.textContent = ROLE_LABELS[role];
-        const staff = STAFF_BY_ROLE[role];
-        if (staffNameEl) staffNameEl.textContent = staff.name;
-        if (staffAvatarEl) staffAvatarEl.textContent = staff.initials;
-        if (topbarAvatar) topbarAvatar.textContent = staff.initials;
-
-        // Sidebar — Reports and Staff & settings are manager-only
-        document.querySelectorAll('[data-role-required="manager"]').forEach((el) => {
-            if (role === 'manager') {
-                el.removeAttribute('aria-disabled');
-                el.removeAttribute('title');
-            } else {
-                el.setAttribute('aria-disabled', 'true');
-                el.setAttribute('title', 'Manager access only');
-            }
-        });
-
-        // Access control
-        if (role === 'manager') {
-            accessDenied.hidden = true;
-            reportsContent.hidden = false;
-        } else {
-            accessDenied.hidden = false;
-            reportsContent.hidden = true;
-        }
-
-        showToast('success', 'Role switched', `Now viewing as ${ROLE_LABELS[role]}.`);
-    }
-
-    roleSelect?.addEventListener('change', (e) => applyRole(e.target.value));
-
-    document.getElementById('switchToManager')?.addEventListener('click', () => {
-        roleSelect.value = 'manager';
-        applyRole('manager');
-    });
-
-    // Initialize (manager by default)
-    applyRole('manager');
-
-    /* ==========================================
-       MOBILE SIDEBAR
-       ========================================== */
-    const toggle = document.getElementById('menuToggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const closeSidebar = () => {
-        sidebar?.classList.remove('open');
-        overlay?.classList.remove('open');
-        toggle?.setAttribute('aria-expanded', 'false');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+    const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+    const fmtDate = value => {
+        if (!value) return '—';
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
     };
-    toggle?.addEventListener('click', () => {
-        const open = sidebar.classList.toggle('open');
-        overlay.classList.toggle('open', open);
-        toggle.setAttribute('aria-expanded', String(open));
-    });
-    overlay?.addEventListener('click', closeSidebar);
-
-    /* ==========================================
-       TABS
-       ========================================== */
-    document.querySelectorAll('.tab').forEach((tab) => {
-        tab.addEventListener('click', () => {
-            const target = tab.dataset.tab;
-            document.querySelectorAll('.tab').forEach((t) => {
-                const active = t === tab;
-                t.classList.toggle('active', active);
-                t.setAttribute('aria-selected', String(active));
-            });
-            document.querySelectorAll('.tab-panel').forEach((p) => {
-                p.classList.toggle('active', p.dataset.panel === target);
-            });
-        });
-    });
-
-    /* ==========================================
-       RANGE / EXPORT / SCHEDULE MENUS
-       ========================================== */
-    const rangeBtn = document.getElementById('rangeBtn');
-    const rangeMenu = document.getElementById('rangeMenu');
-    const exportBtn = document.getElementById('exportBtn');
-    const exportMenu = document.getElementById('exportMenu');
-
-    function bindMenu(btn, menu) {
-        btn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const wasOpen = !menu.hidden;
-            document.querySelectorAll('.chip-menu').forEach((m) => m.hidden = true);
-            menu.hidden = wasOpen;
-            btn.setAttribute('aria-expanded', String(!wasOpen));
-        });
-    }
-    bindMenu(rangeBtn, rangeMenu);
-    bindMenu(exportBtn, exportMenu);
-
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.chip-menu').forEach((m) => m.hidden = true);
-    });
-
-    document.querySelectorAll('[data-range]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            rangeMenu.hidden = true;
-            const label = btn.textContent.trim();
-            rangeBtn.querySelector('.chip-label').textContent = label;
-            document.getElementById('rangeLabel').textContent = label;
-            showToast('success', 'Range changed', `Showing ${label}.`);
-        });
-    });
-
-    document.querySelectorAll('[data-export]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            exportMenu.hidden = true;
-            const format = btn.dataset.export;
-            if (format === 'print') { window.print(); return; }
-            logExport(format);
-            showToast('success', 'Export started',
-                `Exporting ${document.getElementById('rangeLabel').textContent} as ${format.toUpperCase()}. Manager permission applied — sensitive fields masked.`);
-        });
-    });
-
-    document.getElementById('scheduleBtn')?.addEventListener('click', () => {
-        showToast('success', 'Schedule report', 'Choose frequency, recipients and format in the dialog.');
-    });
-    document.getElementById('addScheduleBtn')?.addEventListener('click', () => {
-        showToast('success', 'New schedule', 'Configure schedule in the dialog.');
-    });
-
-    function logExport(format) {
-        const tbody = document.querySelectorAll('.data-table')[document.querySelectorAll('.data-table').length - 1].querySelector('tbody');
-        if (!tbody) return;
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>Ravi Batra</td>
-            <td>${document.getElementById('rangeLabel').textContent}</td>
-            <td>${format.toUpperCase()}</td>
-            <td>Today · ${new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</td>
-        `;
-        tbody.prepend(row);
-    }
-
-    /* ==========================================
-       KPI DRILL-DOWN DRAWER
-       ========================================== */
-    const drillOverlay = document.getElementById('drillOverlay');
-    const drillDrawer = document.getElementById('drillDrawer');
-    const drillTitle = document.getElementById('drillTitle');
-    const drillSub = document.getElementById('drillSub');
-    const drillBody = document.getElementById('drillBody');
-
-    function openDrill(title, sub, content) {
-        drillTitle.textContent = title;
-        drillSub.textContent = sub;
-        drillBody.innerHTML = content;
-        drillDrawer.hidden = false;
-        drillOverlay.hidden = false;
-        requestAnimationFrame(() => {
-            drillDrawer.classList.add('open');
-            drillOverlay.classList.add('open');
-        });
-        document.body.style.overflow = 'hidden';
-    }
-    function closeDrill() {
-        drillDrawer.classList.remove('open');
-        drillOverlay.classList.remove('open');
-        document.body.style.overflow = '';
-        setTimeout(() => { drillDrawer.hidden = true; drillOverlay.hidden = true; }, 250);
-    }
-    document.getElementById('drillClose')?.addEventListener('click', closeDrill);
-    drillOverlay?.addEventListener('click', closeDrill);
-
-    document.querySelectorAll('.kpi-card').forEach((card) => {
-        card.addEventListener('click', () => {
-            const key = card.dataset.kpi;
-            openKpiDrill(key);
-        });
-    });
-
-    const DRILL_CONTENT = {
-        occupancy: {
-            title: 'Occupancy rate — 78%',
-            sub: 'Last 7 days · avg across floors',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Percentage of available bed-nights occupied. 43 of 55 beds currently occupied.</p>
-                <table class="data-table compact"><thead><tr><th>Floor</th><th>Beds</th><th>Occupied</th><th>Rate</th></tr></thead>
-                <tbody>
-                    <tr><td>Floor 1</td><td>18</td><td>12</td><td>67%</td></tr>
-                    <tr><td>Floor 2</td><td>18</td><td>16</td><td>89%</td></tr>
-                    <tr><td>Floor 3</td><td>19</td><td>15</td><td>79%</td></tr>
-                </tbody></table>`
-        },
-        alos: {
-            title: 'Avg length of stay — 6.4 nights',
-            sub: 'Last 7 days · checked-out guests only',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Average nights per checked-out guest.</p>
-                <table class="data-table compact"><thead><tr><th>Guest</th><th>Room</th><th>Nights</th></tr></thead>
-                <tbody>
-                    <tr><td>Sofia Reyes</td><td>201</td><td>7</td></tr>
-                    <tr><td>Hana Kim</td><td>308</td><td>7</td></tr>
-                    <tr><td>Jamie Dela Cruz</td><td>304</td><td>7</td></tr>
-                    <tr><td>Aiko Tanaka</td><td>202</td><td>7</td></tr>
-                </tbody></table>`
-        },
-        overdue: {
-            title: 'Overdue check-outs — 1 guest',
-            sub: 'Average 2 days overdue',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Guests past expected check-out date.</p>
-                <table class="data-table compact"><thead><tr><th>Guest</th><th>Room</th><th>Guest ID</th><th>Reg ID</th><th>Expected</th><th>Days overdue</th></tr></thead>
-                <tbody>
-                    <tr>
-                        <td>Sofia Reyes</td>
-                        <td>201</td>
-                        <td>TR-1001</td>
-                        <td>HV-1001</td>
-                        <td>Oct 9, 2026</td>
-                        <td><span style="color:var(--status-amber-fg);font-weight:600">2 days</span></td>
-                    </tr>
-                </tbody></table>`
-        },
-        response: {
-            title: 'Avg request response — 18 min',
-            sub: 'Last 7 days · from creation to first staff action',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">60 requests total this period.</p>
-                <table class="data-table compact"><thead><tr><th>Type</th><th>Volume</th><th>Avg response</th></tr></thead>
-                <tbody>
-                    <tr><td>Housekeeping</td><td>24</td><td>14 min</td></tr>
-                    <tr><td>Maintenance</td><td>12</td><td>22 min</td></tr>
-                    <tr><td>Extra bedding</td><td>10</td><td>16 min</td></tr>
-                    <tr><td>Late check-out</td><td>8</td><td>28 min</td></tr>
-                    <tr><td>Room change</td><td>6</td><td>35 min</td></tr>
-                </tbody></table>`
-        },
-        sla: {
-            title: 'SLA compliance — 94%',
-            sub: '4 requests breached their target time',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Compliance is measured against each request's target time.</p>
-                <table class="data-table compact"><thead><tr><th>Type</th><th>Breaches</th><th>Target</th></tr></thead>
-                <tbody>
-                    <tr><td>Maintenance</td><td>2</td><td>30 min</td></tr>
-                    <tr><td>Housekeeping</td><td>1</td><td>60 min</td></tr>
-                    <tr><td>Room change</td><td>1</td><td>180 min</td></tr>
-                </tbody></table>`
-        },
-        oos: {
-            title: 'Rooms out of service — 2',
-            sub: 'Maintenance or inspection required',
-            body: `<p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Rooms currently unavailable for check-in.</p>
-                <table class="data-table compact"><thead><tr><th>Room</th><th>Reason</th><th>Since</th></tr></thead>
-                <tbody>
-                    <tr><td>305</td><td>Deep clean scheduled</td><td>Oct 9, 2026</td></tr>
-                    <tr><td>106</td><td>A/C unit replacement</td><td>Oct 6, 2026</td></tr>
-                </tbody></table>`
-        }
+    const fmtDateTime = value => {
+        if (!value) return '—';
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     };
+    const dateLocal = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-    function openKpiDrill(key) {
-        const c = DRILL_CONTENT[key];
-        if (!c) return;
-        openDrill(c.title, c.sub, c.body);
-    }
-
-    /* ==========================================
-       CHART PLACEHOLDERS — RENDER ON LOAD
-       ========================================== */
-    renderOccupancyChart();
-    renderArrivalsChart();
-    renderRequestsChart();
-    renderMixChart();
-
-    function renderOccupancyChart() {
-        const el = document.getElementById('chartOccupancy');
-        if (!el) return;
-        const data = [72, 75, 78, 80, 79, 76, 78];
-        const labels = ['Oct 4', 'Oct 5', 'Oct 6', 'Oct 7', 'Oct 8', 'Oct 9', 'Oct 10'];
-        const max = 100;
-        const w = 500, h = 200, pad = 24;
-        const stepX = (w - pad * 2) / (data.length - 1);
-        const points = data.map((v, i) => [pad + i * stepX, h - pad - (v / max) * (h - pad * 2)]);
-        const path = 'M ' + points.map((p) => p.join(' ')).join(' L ');
-
-        el.innerHTML = `
-            <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Occupancy over the last 7 days">
-                ${[0, 25, 50, 75, 100].map((v) => {
-                    const y = h - pad - (v / max) * (h - pad * 2);
-                    return `<line class="grid-line" x1="${pad}" x2="${w - pad}" y1="${y}" y2="${y}"/>
-                            <text class="axis-label" x="4" y="${y + 3}">${v}%</text>`;
-                }).join('')}
-                <path class="line-area" d="${path} L ${points[points.length-1][0]} ${h-pad} L ${pad} ${h-pad} Z"/>
-                <path class="line-path" d="${path}"/>
-                ${points.map(([x, y], i) => `
-                    <circle class="point" cx="${x}" cy="${y}" r="4">
-                        <title>${labels[i]}: ${data[i]}%</title>
-                    </circle>
-                    <text class="axis-label" x="${x}" y="${h - 6}" text-anchor="middle">${labels[i]}</text>
-                `).join('')}
-            </svg>
-        `;
-    }
-
-    function renderArrivalsChart() {
-        const el = document.getElementById('chartArrivals');
-        if (!el) return;
-        const arrivals = [8, 10, 7, 12, 9, 11, 12];
-        const departures = [6, 9, 11, 8, 10, 12, 8];
-        const labels = ['Oct 4', 'Oct 5', 'Oct 6', 'Oct 7', 'Oct 8', 'Oct 9', 'Oct 10'];
-        const max = Math.max(...arrivals, ...departures);
-
-        el.innerHTML = `
-            <div class="bar-chart" role="img" aria-label="Arrivals vs departures over the last 7 days">
-                ${labels.map((label, i) => {
-                    const aH = (arrivals[i] / max) * 100;
-                    const dH = (departures[i] / max) * 100;
-                    return `
-                        <div class="bar-group">
-                            <span class="bar-value">${arrivals[i]}/${departures[i]}</span>
-                            <div class="bar-stack">
-                                <div class="bar" style="height:${dH}%" title="Departures: ${departures[i]}"></div>
-                                <div class="bar secondary" style="height:${aH}%" title="Arrivals: ${arrivals[i]}"></div>
-                            </div>
-                            <span class="bar-label" style="position:relative;bottom:-18px">${label}</span>
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-            <div style="display:flex;gap:16px;font-size:0.75rem;color:var(--text-muted);margin-top:24px">
-                <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--green-accent)"></span>Arrivals</span>
-                <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--status-blue-fg)"></span>Departures</span>
-            </div>
-        `;
-    }
-
-    function renderRequestsChart() {
-        const el = document.getElementById('chartRequests');
-        if (!el) return;
-        const data = [
-            { type: 'Housekeeping', volume: 24, response: 14 },
-            { type: 'Maintenance', volume: 12, response: 22 },
-            { type: 'Extra bedding', volume: 10, response: 16 },
-            { type: 'Late check-out', volume: 8, response: 28 },
-            { type: 'Room change', volume: 6, response: 35 }
-        ];
-        const max = Math.max(...data.map((d) => d.volume));
-        el.innerHTML = `
-            <div class="bar-chart" role="img" aria-label="Service requests by type">
-                ${data.map((d) => `
-                    <div class="bar-group">
-                        <span class="bar-value">${d.volume}</span>
-                        <div class="bar-stack">
-                            <div class="bar" style="height:${(d.volume / max) * 100}%" title="${d.type}: ${d.volume} requests, avg ${d.response} min"></div>
-                        </div>
-                        <span class="bar-label" style="position:relative;bottom:-18px;font-size:0.6rem;max-width:70px;white-space:normal">${d.type}</span>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    }
-
-    function renderMixChart() {
-        const el = document.getElementById('chartMix');
-        if (!el) return;
-        const segments = [
-            { key: 'occupied',      label: 'Occupied',       value: 18, color: '#4b7c5c', fg: '#fff' },
-            { key: 'vacant-clean',  label: 'Vacant clean',   value: 3,  color: '#a8b8b0', fg: '#1f2923' },
-            { key: 'vacant-dirty',  label: 'Vacant dirty',   value: 3,  color: '#c9a961', fg: '#fff' },
-            { key: 'cleaning',      label: 'Cleaning',       value: 1,  color: '#1e3a8a', fg: '#fff' },
-            { key: 'maintenance',   label: 'Maintenance',    value: 2,  color: '#9b1c1c', fg: '#fff' },
-            { key: 'reserved',      label: 'Reserved',       value: 2,  color: '#8a5a00', fg: '#fff' },
-            { key: 'overdue',       label: 'Overdue',        value: 1,  color: '#b06a00', fg: '#fff' }
-        ];
-        const total = segments.reduce((s, x) => s + x.value, 0);
-
-        el.innerHTML = `
-            <div class="stacked-bar" role="img" aria-label="Room status distribution">
-                ${segments.map((s) => `
-                    <div class="seg ${s.key}" style="width:${(s.value/total)*100}%;background:${s.color};color:${s.fg}"
-                         title="${s.label}: ${s.value}">
-                        ${s.value / total > 0.08 ? s.value : ''}
-                    </div>
-                `).join('')}
-            </div>
-            <div class="stacked-legend">
-                ${segments.map((s) => `
-                    <span class="legend-item">
-                        <span class="swatch" style="background:${s.color}"></span>
-                        ${s.label} · ${s.value}
-                    </span>
-                `).join('')}
-            </div>
-        `;
-    }
-
-    /* ==========================================
-       "VIEW AS TABLE" TOGGLE
-       ========================================== */
-    document.querySelectorAll('[data-view="table"]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const chartKey = btn.dataset.chart;
-            const chart = document.getElementById('chart' + capitalize(chartKey));
-            const table = document.getElementById('table' + capitalize(chartKey));
-            if (!chart || !table) return;
-            const showTable = table.hidden;
-            chart.hidden = showTable;
-            table.hidden = !showTable;
-            btn.textContent = showTable ? 'View as chart' : 'View as table';
-        });
-    });
-
-    function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-    /* ==========================================
-       AUDIT LOG RENDER + FILTER
-       ========================================== */
-    const AUDIT = [
-        { staff: 'Ravi Batra',  action: 'Force check-out', target: 'Room 303 · Diego Marquez', reason: '2 days overdue', time: 'Today · 11:08 AM' },
-        { staff: 'Marco Cruz',  action: 'Revealed ID number', target: 'Aiko Tanaka · TR-1002', reason: 'Verify student status', time: 'Today · 9:15 AM' },
-        { staff: 'Ravi Batra',  action: 'Changed role', target: 'Self · Manager', reason: 'Shift handover', time: 'Yesterday · 5:30 PM' },
-        { staff: 'Marco Cruz',  action: 'Changed room', target: 'Room 208 → 210 · Lena Okafor', reason: 'A/C noise complaint', time: 'Yesterday · 3:14 PM' },
-        { staff: 'Joy Lim',     action: 'Marked out of service', target: 'Room 106', reason: 'A/C unit replacement', time: 'Oct 6 · 8:42 AM' },
-        { staff: 'Marco Cruz',  action: 'Force check-out', target: 'Room 304 · Jamie Dela Cruz', reason: 'No contact for 24 hours', time: 'Oct 5 · 10:20 PM' },
-        { staff: 'Ravi Batra',  action: 'Exported report', target: 'Audit log · Sept 2026', reason: 'Compliance review', time: 'Oct 9 · 5:20 PM' }
-    ];
-
-    const auditBody = document.getElementById('auditBody');
-    function renderAudit(filter = '') {
-        if (!auditBody) return;
-        const q = filter.toLowerCase();
-        const rows = AUDIT.filter((a) =>
-            !q || a.staff.toLowerCase().includes(q)
-                 || a.action.toLowerCase().includes(q)
-                 || a.target.toLowerCase().includes(q)
-                 || a.reason.toLowerCase().includes(q)
-        );
-        auditBody.innerHTML = rows.length
-            ? rows.map((a) => `
-                <tr>
-                    <td>${a.staff}</td>
-                    <td>${a.action}</td>
-                    <td>${a.target}</td>
-                    <td class="muted">${a.reason}</td>
-                    <td class="muted">${a.time}</td>
-                </tr>
-            `).join('')
-            : `<tr><td colspan="5"><div class="empty-state small"><p class="empty-sub">No matching audit entries.</p></div></td></tr>`;
-    }
-    renderAudit();
-
-    document.getElementById('auditSearch')?.addEventListener('input', (e) => renderAudit(e.target.value.trim()));
-
-    /* ==========================================
-       KEYBOARD
-       ========================================== */
-    document.addEventListener('keydown', (e) => {
-        const tag = (e.target.tagName || '').toLowerCase();
-        const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-        if (typing && e.key !== 'Escape') return;
-
-        if (e.key === 'Escape') {
-            closeSidebar();
-            closeDrill();
-            document.querySelectorAll('.chip-menu').forEach((m) => m.hidden = true);
-        }
-    });
-
-    /* ==========================================
-       TOASTS
-       ========================================== */
-    const toastContainer = document.getElementById('toastContainer');
-    function showToast(type, title, message, timeout = 3500) {
+    function toast(type, title, message) {
+        const container = $('#toastContainer');
+        if (!container) { console[type === 'error' ? 'error' : 'log'](`${title}: ${message}`); return; }
         const el = document.createElement('div');
         el.className = `toast ${type}`;
-        el.innerHTML = `
-            <span class="toast-icon" aria-hidden="true">
-                ${type === 'success'
-                    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e5a3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
-                    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9b1c1c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`}
-            </span>
-            <div class="toast-text"><strong>${title}</strong>${message}</div>
-        `;
-        toastContainer.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('leaving');
-            setTimeout(() => el.remove(), 250);
-        }, timeout);
+        const strong = document.createElement('strong');
+        strong.textContent = title;
+        const span = document.createElement('span');
+        span.textContent = message || '';
+        el.append(strong, span);
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 3800);
     }
 
-    /* ==========================================
-       LAST UPDATED TICKER
-       ========================================== */
-    const dataAsOf = document.getElementById('dataAsOf');
-    let secs = 0;
-    setInterval(() => {
-        secs++;
-        const base = 'Data as of Oct 10, 2026 · 4:30 PM';
-        dataAsOf.textContent = secs < 5 ? base : `${base} · updated ${secs}s ago`;
-    }, 1000);
-});
+    function setText(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value == null ? '—' : String(value);
+    }
+
+    function setHtml(id, html) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
+
+    function setBody(id, rows, columns, emptyMessage = 'No records for this date range.') {
+        const body = document.getElementById(id);
+        if (!body) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            body.innerHTML = `<tr><td colspan="${columns}" class="phase6-empty-cell">${esc(emptyMessage)}</td></tr>`;
+            return;
+        }
+        body.innerHTML = rows.map(row => `<tr>${row.map(cell => `<td>${cell == null || cell === '' ? '—' : cell}</td>`).join('')}</tr>`).join('');
+    }
+
+    function statusLabel(value) {
+        return String(value || 'unknown').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function emptyChart(el, message) {
+        if (el) el.innerHTML = `<div class="phase6-empty">${esc(message)}</div>`;
+    }
+
+    function renderBars(el, rows, labelKey, valueKey) {
+        if (!el) return;
+        if (!rows?.length) { emptyChart(el, 'No records for this date range.'); return; }
+        const max = Math.max(1, ...rows.map(row => num(row[valueKey])));
+        el.innerHTML = `<div class="phase6-chart-list">${rows.map(row => {
+            const value = num(row[valueKey]);
+            const pct = Math.max(0, Math.min(100, value / max * 100));
+            return `<div class="phase6-chart-row"><div class="phase6-chart-meta"><span>${esc(statusLabel(row[labelKey]))}</span><strong>${value}</strong></div><div class="phase6-chart-track"><span style="width:${pct}%"></span></div></div>`;
+        }).join('')}</div>`;
+    }
+
+    function buildRoomStatusRows(rooms) {
+        const keys = [
+            ['occupied','Occupied'], ['vacant_clean','Vacant clean'], ['vacant_dirty','Vacant dirty'],
+            ['cleaning','Cleaning'], ['maintenance','Maintenance'], ['reserved','Reserved'], ['overdue','Overdue']
+        ];
+        return keys.map(([key,label]) => ({ status: label, total: num(rooms?.[key]) }));
+    }
+
+    function renderKpis(data) {
+        const rooms = data.rooms || {};
+        const profiles = data.profiles || {};
+        const booking = data.booking_reviews || {};
+        const requests = data.service_requests || {};
+        const workflow = data.service_workflow || {};
+        const orders = data.room_work_orders || {};
+
+        const occupancy = num(rooms.occupancy_pct);
+        setHtml('kpiOcc', `${occupancy}<span class="kpi-suffix">%</span>`);
+        setText('kpiOccChange', `${num(rooms.occupied_or_overdue ?? rooms.occupied)} occupied / overdue of ${num(rooms.total)} rooms`);
+
+        setHtml('kpiAlos', `${num(profiles.active_clients)}<span class="kpi-suffix"> clients</span>`);
+        setText('kpiAlosChange', `${num(profiles.total_clients)} client accounts in total`);
+
+        setHtml('kpiOverdue', `${num(booking.pending)}<span class="kpi-suffix"> pending</span>`);
+        setText('kpiOverdueChange', `${num(booking.total)} booking reviews in selected period`);
+
+        setHtml('kpiResponse', `${num(requests.total)}<span class="kpi-suffix"> requests</span>`);
+        setText('kpiResponseChange', 'Created in selected date range');
+
+        const openTasks = num(workflow.pending) + num(workflow.assigned) + num(workflow.in_progress);
+        const openRoomOrders = num(orders.in_progress);
+        setHtml('kpiSla', `${openTasks + openRoomOrders}<span class="kpi-suffix"> open</span>`);
+        setText('kpiSlaChange', `${openTasks} service tasks · ${openRoomOrders} room work orders`);
+
+        setText('kpiOos', num(rooms.unavailable));
+        setText('kpiOosChange', `${num(rooms.maintenance)} maintenance · ${num(rooms.cleaning)} cleaning`);
+    }
+
+    function renderOverview(data) {
+        const rooms = data.rooms || {};
+        const byFloor = rooms.by_floor || [];
+        const checkinDays = data.checkins?.by_day || [];
+        const requestsByType = data.service_requests_by_type || [];
+        const roomStatusRows = buildRoomStatusRows(rooms);
+
+        renderBars($('#chartOccupancy'), byFloor.map(row => ({ label: `Floor ${row.floor}`, value: num(row.total) })), 'label', 'value');
+        setBody('tableOccupancyBody', byFloor.map(row => [
+            `Floor ${esc(row.floor)}`, num(row.total), num(row.occupied), num(row.vacant_clean)
+        ]), 4);
+
+        renderBars($('#chartArrivals'), checkinDays.map(row => ({ label: fmtDate(row.date), value: num(row.checkins) })), 'label', 'value');
+        setBody('tableArrivalsBody', checkinDays.map(row => [fmtDate(row.date), num(row.checkins)]), 2);
+
+        renderBars($('#chartRequests'), requestsByType.map(row => ({ label: statusLabel(row.type), value: num(row.total) })), 'label', 'value');
+        setBody('tableRequestsBody', requestsByType.map(row => [statusLabel(row.type), num(row.total)]), 2);
+
+        renderBars($('#chartMix'), roomStatusRows.map(row => ({ label: row.status, value: row.total })), 'label', 'value');
+        setBody('tableMixBody', roomStatusRows.map(row => [esc(row.status), row.total]), 2);
+    }
+
+    function renderOccupancy(data) {
+        const floors = data.rooms?.by_floor || [];
+        setBody('floorStatusBody', floors.map(row => [
+            `Floor ${esc(row.floor)}`, num(row.total), num(row.occupied), num(row.vacant_clean),
+            num(row.vacant_dirty), num(row.cleaning), num(row.maintenance), num(row.reserved), num(row.overdue)
+        ]), 9, 'No room records found.');
+        setText('roomSnapshotTotal', num(data.rooms?.total));
+        setText('roomSnapshotRate', `${num(data.rooms?.occupancy_pct)}%`);
+    }
+
+    function renderCheckins(data) {
+        const rows = data.checkins?.by_day || [];
+        setBody('checkinDailyBody', rows.map(row => [fmtDate(row.date), num(row.checkins)]), 2);
+        setText('checkinTotal', num(data.checkins?.total_checkins));
+        const booking = data.booking_reviews || {};
+        setBody('bookingStatusBody', [
+            ['Pending', num(booking.pending)], ['Approved', num(booking.approved)], ['Rejected', num(booking.rejected)]
+        ], 2);
+        const groups = data.group_bookings || {};
+        setBody('groupBookingStatusBody', [
+            ['Inviting', num(groups.inviting)], ['Ready', num(groups.ready)], ['Confirmed', num(groups.confirmed)],
+            ['Completed', num(groups.completed)], ['Expired', num(groups.expired)], ['Cancelled', num(groups.cancelled)]
+        ], 2);
+        setText('departureAvailabilityNote', 'Checkout date/history is not stored in the current schema; departures are not calculated.');
+    }
+
+    function renderRequests(data) {
+        const byType = data.service_requests_by_type || [];
+        setBody('requestTypeBody', byType.map(row => [
+            esc(statusLabel(row.type)), num(row.total), num(row.pending), num(row.in_progress), num(row.done), num(row.rejected)
+        ]), 6);
+        const workload = data.workload_by_staff || [];
+        setBody('workloadBody', workload.map(row => [
+            esc(row.staff_name), esc(statusLabel(row.staff_role)), num(row.assigned), num(row.in_progress), num(row.completed)
+        ]), 5, 'No assigned workflow records for this date range.');
+    }
+
+    function renderHousekeeping(data) {
+        const rows = data.housekeeping_by_staff || [];
+        setBody('housekeepingBody', rows.map(row => [
+            esc(row.staff_name), esc(statusLabel(row.work_type)), num(row.started), num(row.completed),
+            num(row.in_progress), row.avg_minutes == null ? '—' : `${num(row.avg_minutes)} min`
+        ]), 6, 'No housekeeping or maintenance work orders recorded for this date range.');
+    }
+
+    function renderGuests(data) {
+        const institutions = data.institutions || [];
+        setBody('institutionBody', institutions.map(row => [esc(row.institution), num(row.clients)]), 2,
+            'No client institution data is available.');
+        const registrations = data.registrations || {};
+        setBody('registrationStatusBody', [
+            ['Pending', num(registrations.pending)], ['Verified', num(registrations.verified)], ['Other statuses', num(registrations.other)]
+        ], 2);
+        const roles = data.profiles?.by_role_status || [];
+        setBody('roleStatusBody', roles.map(row => [esc(statusLabel(row.role)), esc(statusLabel(row.status)), num(row.total)]), 3,
+            'No profile accounts found.');
+    }
+
+    function renderMeta(data) {
+        const meta = data.meta || {};
+        setText('rangeLabel', `${fmtDate(meta.start_date)} – ${fmtDate(meta.end_date)}`);
+        const stamp = meta.generated_at ? fmtDateTime(meta.generated_at) : fmtDateTime(new Date());
+        setText('dataAsOf', `Live data · generated ${stamp}`);
+        setText('reportLimitations', 'Average stay, departures, request response time, and SLA are not calculated because the current database does not store checkout timestamps, first-response timestamps, or SLA targets.');
+    }
+
+    async function loadReports({ quiet = false } = {}) {
+        if (state.loading) return;
+        const client = db();
+        if (!client) { toast('error','Reports unavailable','Supabase client is not initialized.'); return; }
+        state.loading = true;
+        if (!quiet) setText('dataAsOf', 'Loading live report data…');
+        try {
+            const { data, error } = await client.rpc('get_manager_reports', {
+                p_start_date: state.start,
+                p_end_date: state.end
+            });
+            if (error) throw error;
+            if (!data?.ok) throw new Error(data?.message || 'The reporting function returned no data.');
+            state.reports = data;
+            renderKpis(data);
+            renderOverview(data);
+            renderOccupancy(data);
+            renderCheckins(data);
+            renderRequests(data);
+            renderHousekeeping(data);
+            renderGuests(data);
+            renderMeta(data);
+        } catch (error) {
+            console.error('[CMDI Manager Reports] Load failed:', error);
+            if (!quiet) toast('error','Unable to load reports',error.message || 'Check the Phase 6 SQL migration and Manager access.');
+            setText('dataAsOf', 'Live report data could not be loaded.');
+        } finally {
+            state.loading = false;
+        }
+    }
+
+    function auditBounds() {
+        const startDate = state.start || dateLocal(new Date(Date.now() - 6 * 86400000));
+        const endDate = state.end || dateLocal(new Date());
+        const start = new Date(`${startDate}T00:00:00`);
+        const endExclusive = new Date(`${endDate}T00:00:00`);
+        endExclusive.setDate(endExclusive.getDate() + 1);
+        return { from: start.toISOString(), to: endExclusive.toISOString() };
+    }
+
+    async function loadAudit({ reset = true } = {}) {
+        if (state.auditLoading) return;
+        state.auditLoading = true;
+        if (reset) state.auditOffset = 0;
+        const { from, to } = auditBounds();
+        try {
+            const { data, error } = await db().rpc('get_manager_audit_logs', {
+                p_search: state.auditSearch || null,
+                p_from: from,
+                p_to: to,
+                p_limit: state.auditLimit,
+                p_offset: state.auditOffset
+            });
+            if (error) throw error;
+            state.auditTotal = num(data?.total);
+            const entries = Array.isArray(data?.entries) ? data.entries : [];
+            state.auditEntries = reset ? entries : [...state.auditEntries, ...entries];
+            renderAudit();
+        } catch (error) {
+            console.error('[CMDI Audit Trail] Load failed:', error);
+            setBody('auditBody', [], 5, 'Audit records could not be loaded.');
+            toast('error','Audit Trail unavailable',error.message || 'Check Manager access and the Phase 6 migration.');
+        } finally {
+            state.auditLoading = false;
+        }
+    }
+
+    function renderAudit() {
+        const rows = state.auditEntries || [];
+        setBody('auditBody', rows.map(row => [
+            esc(row.actor_name || 'Unknown'),
+            `${esc(row.action)}${row.actor_role ? `<span class="phase6-muted">${esc(statusLabel(row.actor_role))}</span>` : ''}`,
+            esc([row.target_type, row.target_id].filter(Boolean).join(' · ') || '—'),
+            esc(row.reason || '—'),
+            fmtDateTime(row.created_at)
+        ]), 5, state.auditSearch ? 'No matching audit entries.' : 'No audit records have been recorded yet.');
+        setText('auditCount', `${rows.length} of ${state.auditTotal} audit records`);
+        const more = $('#auditLoadMore');
+        if (more) more.hidden = rows.length >= state.auditTotal;
+    }
+
+    function csvCell(value) {
+        let text = String(value ?? '');
+        if (/^[=+@\-\t\r]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    function downloadCsv(filename, rows) {
+        const csv = rows.map(row => row.map(csvCell).join(',')).join('\r\n');
+        const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    async function recordExport(format, target) {
+        try {
+            const { error } = await db().rpc('log_audit', {
+                p_action: 'manager_report_exported',
+                p_target_type: 'report',
+                p_target_id: target,
+                p_reason: `Manager exported report as ${format.toUpperCase()}`,
+                p_details: { format, start_date: state.start, end_date: state.end }
+            });
+            if (error) console.warn('[CMDI Reports] Export audit event was not recorded:', error.message);
+        } catch (error) {
+            console.warn('[CMDI Reports] Export audit event failed:', error);
+        }
+    }
+
+    async function exportReports() {
+        if (!state.reports) { toast('error','Nothing to export','Load report data first.'); return; }
+        const d = state.reports;
+        const rows = [
+            ['CMDI Manager Reports'], ['Start date', state.start], ['End date', state.end], ['Generated at', d.meta?.generated_at || ''], [],
+            ['Room inventory'], ['Metric','Count'],
+            ...Object.entries({ total:d.rooms?.total, occupied:d.rooms?.occupied, vacant_clean:d.rooms?.vacant_clean, vacant_dirty:d.rooms?.vacant_dirty, cleaning:d.rooms?.cleaning, maintenance:d.rooms?.maintenance, reserved:d.rooms?.reserved, overdue:d.rooms?.overdue, occupancy_pct:d.rooms?.occupancy_pct }),
+            [], ['Profiles'], ['Metric','Count'],
+            ...Object.entries({total_accounts:d.profiles?.total_accounts,total_clients:d.profiles?.total_clients,active_clients:d.profiles?.active_clients,active_staff:d.profiles?.active_staff}),
+            ['Role','Status','Accounts'],
+            ...(d.profiles?.by_role_status || []).map(x => [x.role,x.status,x.total]),
+            [], ['Booking reviews'], ['Metric','Count'],
+            ...Object.entries(d.booking_reviews || {}),
+            [], ['Group bookings'], ['Metric','Count'],
+            ...Object.entries(d.group_bookings || {}),
+            [], ['Registrations'], ['Metric','Count'],
+            ...Object.entries(d.registrations || {}),
+            [], ['Service requests'], ['Metric','Count'],
+            ...Object.entries(d.service_requests || {}),
+            [], ['Service request workflow'], ['Metric','Count'],
+            ...Object.entries(d.service_workflow || {}),
+            [], ['Room work orders'], ['Metric','Count'],
+            ...Object.entries(d.room_work_orders || {}),
+            [], ['Service requests by type'], ['Type','Total','Pending','In progress','Done','Rejected'],
+            ...(d.service_requests_by_type || []).map(x => [x.type,x.total,x.pending,x.in_progress,x.done,x.rejected]),
+            [], ['Workload by staff'], ['Staff','Role','Assigned','In progress','Completed'],
+            ...(d.workload_by_staff || []).map(x => [x.staff_name,x.staff_role,x.assigned,x.in_progress,x.completed]),
+            [], ['Housekeeping / maintenance activity'], ['Staff','Work type','Started','Completed','In progress','Average minutes'],
+            ...(d.housekeeping_by_staff || []).map(x => [x.staff_name,x.work_type,x.started,x.completed,x.in_progress,x.avg_minutes]),
+            [], ['Check-ins by day'], ['Date','Check-ins'],
+            ...(d.checkins?.by_day || []).map(x => [x.date,x.checkins])
+        ];
+        downloadCsv(`cmdi-manager-reports-${state.start}-to-${state.end}.csv`, rows);
+        await recordExport('csv', `manager-reports:${state.start}:${state.end}`);
+        await loadAudit({ reset: true });
+        toast('success','CSV exported','Live aggregate report data downloaded.');
+    }
+
+    function setDateRange(kind) {
+        const today = new Date();
+        const end = dateLocal(today);
+        const startDate = new Date(today);
+        let label = 'Last 7 days';
+        if (kind === '1') { label = 'Today'; }
+        else if (kind === '7') { startDate.setDate(startDate.getDate() - 6); label = 'Last 7 days'; }
+        else if (kind === '30') { startDate.setDate(startDate.getDate() - 29); label = 'Last 30 days'; }
+        else if (kind === 'month') { startDate.setDate(1); label = 'This month'; }
+        else return;
+        state.start = dateLocal(startDate);
+        state.end = end;
+        setText('rangeLabel', label);
+        const chipLabel = $('.chip-label', $('#rangeBtn'));
+        if (chipLabel) chipLabel.textContent = label;
+        loadReports();
+        loadAudit();
+    }
+
+    function bindUI() {
+        // Tabs.
+        $$('.tab').forEach(tab => tab.addEventListener('click', () => {
+            const target = tab.dataset.tab;
+            $$('.tab').forEach(item => {
+                const active = item === tab;
+                item.classList.toggle('active', active);
+                item.setAttribute('aria-selected', String(active));
+            });
+            $$('.tab-panel').forEach(panel => panel.classList.toggle('active', panel.dataset.panel === target));
+            if (target === 'audit' && state.auditEntries.length === 0) loadAudit();
+        }));
+
+        // Range dropdown.
+        const rangeBtn = $('#rangeBtn');
+        const rangeMenu = $('#rangeMenu');
+        rangeBtn?.addEventListener('click', event => {
+            event.stopPropagation();
+            rangeMenu.hidden = !rangeMenu.hidden;
+            rangeBtn.setAttribute('aria-expanded', String(!rangeMenu.hidden));
+        });
+        $$('[data-range]').forEach(button => button.addEventListener('click', () => {
+            rangeMenu.hidden = true;
+            setDateRange(button.dataset.range);
+        }));
+
+        // Export dropdown.
+        const exportBtn = $('#exportBtn');
+        const exportMenu = $('#exportMenu');
+        exportBtn?.addEventListener('click', event => {
+            event.stopPropagation();
+            exportMenu.hidden = !exportMenu.hidden;
+            exportBtn.setAttribute('aria-expanded', String(!exportMenu.hidden));
+        });
+        $$('[data-export]').forEach(button => button.addEventListener('click', async () => {
+            exportMenu.hidden = true;
+            if (button.dataset.export === 'csv') await exportReports();
+            else if (button.dataset.export === 'print') window.print();
+        }));
+        document.addEventListener('click', () => {
+            if (rangeMenu) rangeMenu.hidden = true;
+            if (exportMenu) exportMenu.hidden = true;
+        });
+
+        $('#refreshReportsBtn')?.addEventListener('click', () => {
+            loadReports();
+            loadAudit();
+        });
+
+        // Chart/table toggles.
+        $$('[data-view="table"]').forEach(button => button.addEventListener('click', () => {
+            const key = button.dataset.chart;
+            const chart = document.getElementById('chart' + key.charAt(0).toUpperCase() + key.slice(1));
+            const table = document.getElementById('table' + key.charAt(0).toUpperCase() + key.slice(1));
+            if (!chart || !table) return;
+            const showTable = table.hidden;
+            table.hidden = !showTable;
+            chart.hidden = showTable;
+            button.textContent = showTable ? 'View as chart' : 'View as table';
+        }));
+
+        // KPI cards navigate to relevant report tabs.
+        const kpiTab = { occupancy:'occupancy', alos:'guests', overdue:'checkins', response:'requests', sla:'requests', oos:'occupancy' };
+        $$('.kpi-card[data-kpi]').forEach(card => card.addEventListener('click', () => {
+            const target = kpiTab[card.dataset.kpi];
+            const tab = $(`.tab[data-tab="${target}"]`);
+            tab?.click();
+        }));
+
+        // Audit search with server-side filtering.
+        $('#auditSearch')?.addEventListener('input', event => {
+            clearTimeout(state.searchTimer);
+            state.searchTimer = setTimeout(() => {
+                state.auditSearch = event.target.value.trim();
+                loadAudit({ reset: true });
+            }, 300);
+        });
+        $('#auditLoadMore')?.addEventListener('click', () => {
+            state.auditOffset += state.auditLimit;
+            loadAudit({ reset: false });
+        });
+        $('#auditExportBtn')?.addEventListener('click', async () => {
+            if (!state.auditEntries.length) { toast('info','No audit entries','There are no audit rows to export yet.'); return; }
+            const rows = [['Staff','Role','Action','Target type','Target ID','Reason','Time'],
+                ...state.auditEntries.map(x => [x.actor_name,x.actor_role,x.action,x.target_type,x.target_id,x.reason,x.created_at])];
+            downloadCsv(`cmdi-audit-log-page-${Math.floor(state.auditOffset / state.auditLimit) + 1}.csv`, rows);
+            await recordExport('csv', `audit-log-page:${state.auditOffset}`);
+            await loadAudit({ reset: true });
+            toast('success','Audit page exported',`${state.auditEntries.length} visible audit records downloaded.`);
+        });
+
+        // Drawer.
+        const overlay = $('#drillOverlay');
+        const drawer = $('#drillDrawer');
+        const closeDrawer = () => {
+            drawer?.classList.remove('open');
+            overlay?.classList.remove('open');
+            setTimeout(() => { if (drawer) drawer.hidden = true; if (overlay) overlay.hidden = true; }, 220);
+            document.body.style.overflow = '';
+        };
+        $('#drillClose')?.addEventListener('click', closeDrawer);
+        overlay?.addEventListener('click', closeDrawer);
+
+        // Mobile sidebar.
+        const toggle = $('#menuToggle');
+        const sidebar = $('#sidebar');
+        const sidebarOverlay = $('#sidebarOverlay');
+        const closeSidebar = () => {
+            sidebar?.classList.remove('open');
+            sidebarOverlay?.classList.remove('open');
+            toggle?.setAttribute('aria-expanded','false');
+        };
+        toggle?.addEventListener('click', () => {
+            const open = sidebar.classList.toggle('open');
+            sidebarOverlay?.classList.toggle('open', open);
+            toggle?.setAttribute('aria-expanded', String(open));
+        });
+        sidebarOverlay?.addEventListener('click', closeSidebar);
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { closeSidebar(); closeDrawer(); }
+        });
+    }
+
+    async function init() {
+        bindUI();
+        if (!window.RBAC) throw new Error('CMDI RBAC is not loaded.');
+        if (window.RBAC.ready) await window.RBAC.ready;
+        if (!window.RBAC.init({ active: 'reports' })) return;
+        const actualRole = String(window.RBAC.realRole() || '').toLowerCase();
+        if (actualRole !== 'manager' || !window.RBAC.can('reports.view')) return;
+        const roleLabel = actualRole.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        setText('assignedRoleValue', roleLabel);
+        setText('staffRoleLabel', roleLabel);
+        setText('roleBreadcrumb', roleLabel);
+        if (!db()) throw new Error('Supabase client is unavailable.');
+
+        const today = new Date();
+        const start = new Date(today);
+        start.setDate(start.getDate() - 6);
+        state.start = dateLocal(start);
+        state.end = dateLocal(today);
+        setText('rangeLabel', 'Last 7 days');
+        const chipLabel = $('.chip-label', $('#rangeBtn'));
+        if (chipLabel) chipLabel.textContent = 'Last 7 days';
+        await loadReports();
+        await loadAudit();
+        state.refreshTimer = setInterval(() => loadReports({ quiet: true }), 60000);
+        window.addEventListener('beforeunload', () => clearInterval(state.refreshTimer), { once: true });
+    }
+
+    init().catch(error => {
+        console.error('[CMDI Manager Reports] Initialization failed:', error);
+        toast('error','Reports could not start',error.message || 'Please reload the page.');
+    });
+})();

@@ -438,8 +438,57 @@
            APPLY: immutable assigned-role display
            ========================================== */
         applyAssignedRole() {
-            const value = document.getElementById('assignedRoleValue');
-            if (value && this.getProfile()) value.textContent = this.getProfile().label;
+            const profile = this.getProfile();
+            if (!profile) return;
+
+            // Remove legacy role selectors entirely. A disabled select can still
+            // be re-enabled by an older script, so the page must not keep a select.
+            document.querySelectorAll('select#roleSelect').forEach((select) => {
+                const wrapper = select.closest('.role-select-wrap') || select.parentElement;
+                const roleBox = select.closest('.role-switcher') || wrapper?.parentElement;
+                let value = wrapper?.querySelector('#assignedRoleValue');
+                if (!value) {
+                    value = document.createElement('span');
+                    value.id = 'assignedRoleValue';
+                    value.className = 'assigned-role-value';
+                    select.replaceWith(value);
+                } else {
+                    select.remove();
+                }
+
+                if (wrapper) {
+                    wrapper.classList.add('is-locked');
+                    wrapper.setAttribute('role', 'status');
+                    wrapper.setAttribute('aria-live', 'polite');
+                    wrapper.setAttribute('aria-label', `Assigned staff role: ${profile.label}`);
+                    if (!wrapper.querySelector('.role-lock-icon')) {
+                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        svg.setAttribute('class', 'role-lock-icon');
+                        svg.setAttribute('width', '14');
+                        svg.setAttribute('height', '14');
+                        svg.setAttribute('viewBox', '0 0 24 24');
+                        svg.setAttribute('fill', 'none');
+                        svg.setAttribute('stroke', 'currentColor');
+                        svg.setAttribute('stroke-width', '2');
+                        svg.setAttribute('stroke-linecap', 'round');
+                        svg.setAttribute('stroke-linejoin', 'round');
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.innerHTML = '<rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path>';
+                        wrapper.appendChild(svg);
+                    }
+                }
+
+                const roleLabel = roleBox?.querySelector('.role-label');
+                if (roleLabel) {
+                    roleLabel.textContent = 'ASSIGNED ROLE';
+                    roleLabel.removeAttribute('for');
+                }
+            });
+
+            document.querySelectorAll('#assignedRoleValue').forEach((value) => {
+                value.textContent = profile.label;
+                value.classList.add('assigned-role-value');
+            });
         },
 
         /* ==========================================

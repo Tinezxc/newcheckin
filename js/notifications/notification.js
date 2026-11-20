@@ -1,7 +1,9 @@
 /* ==========================================================
-   CMDI STAFF NOTIFICATIONS
-   Uses the authenticated user's own notifications rows.
-   No demo/localStorage notifications are generated.
+   CMDI STAFF NOTIFICATIONS — PHASE 5
+   - Reads only the signed-in user's notification rows.
+   - DB triggers create role-targeted notifications.
+   - Supports unread badge, mark read, mark all read, safe related-page links,
+     Supabase Realtime, and a 60-second fallback refresh.
    ========================================================== */
 (() => {
     'use strict';
@@ -15,135 +17,180 @@
 
     if (!db || !button || !menu || !list) return;
 
-    let userId = null;
-    let channel = null;
-    let notifications = [];
-    let loading = false;
+    const state = {
+        userId: null,
+        channel: null,
+        notifications: [],
+        loading: false,
+        pollTimer: null,
+        initialized: false
+    };
 
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[char]);
 
+    const ALLOWED_LINKS = new Set([
+        'staff-dashboard.html',
+        'staff-requests.html',
+        'staff-checkin.html',
+        'staff-reports.html'
+    ]);
+
+    function safeHref(value) {
+        const href = String(value || '').trim();
+        return ALLOWED_LINKS.has(href) ? href : null;
+    }
+
     function relativeTime(value) {
-        const ms = Date.now() - new Date(value).getTime();
-        if (!Number.isFinite(ms)) return '';
-        const minutes = Math.max(0, Math.floor(ms / 60000));
+        const timestamp = new Date(value).getTime();
+        if (!Number.isFinite(timestamp)) return '';
+        const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
         if (minutes < 1) return 'Just now';
         if (minutes < 60) return `${minutes} min ago`;
         const hours = Math.floor(minutes / 60);
         if (hours < 24) return `${hours} hr ago`;
-        return `${Math.floor(hours / 24)} d ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 30) return `${days} d ago`;
+        return new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
 
     function render() {
-        const unread = notifications.filter(item => !item.is_read).length;
+        const unread = state.notifications.filter(item => !item.is_read).length;
         if (badge) {
             badge.textContent = unread > 9 ? '9+' : String(unread);
             badge.hidden = unread === 0;
         }
-        button.setAttribute(
-            'aria-label',
-            unread ? `Notifications, ${unread} unread` : 'Notifications, none unread'
-        );
+        button.setAttribute('aria-label', unread
+            ? `Notifications, ${unread} unread`
+            : 'Notifications, none unread');
         if (markAllButton) markAllButton.disabled = unread === 0;
 
-        if (!notifications.length) {
+        if (!state.notifications.length) {
             list.innerHTML = '<li class="notif-empty" style="justify-content:center;padding:28px 16px;color:var(--text-3);">No notifications yet</li>';
             return;
         }
 
-        list.innerHTML = notifications.map(item => `
-            <li class="${item.is_read ? '' : 'unread'}" data-notification-id="${esc(item.id)}" tabindex="0">
-                <span class="notif-dot ${item.is_read ? 'empty' : ''}"></span>
-                <div>
-                    <p>${esc(item.title)}</p>
-                    <p>${esc(item.message)}</p>
-                    <span>${esc(relativeTime(item.created_at))}</span>
-                </div>
-            </li>
-        `).join('');
+        list.innerHTML = state.notifications.map(item => {
+            const href = safeHref(item.href);
+            const title = esc(item.title || 'Notification');
+            const message = esc(item.message || '');
+            const time = esc(relativeTime(item.created_at));
+            const eventType = esc(String(item.event_type || '').replace(/[._]/g, ' '));
+            return `
+                <li class="${item.is_read ? '' : 'unread'}"
+                    data-notification-id="${esc(item.id)}"
+                    ${href ? `data-href="${href}"` : ''}
+                    tabindex="0"
+                    role="${href ? 'link' : 'button'}"
+                    aria-label="${title}. ${message}${href ? '. Open related page' : '. Mark as read'}">
+                    <span class="notif-dot ${item.is_read ? 'empty' : ''}"></span>
+                    <div class="notif-content">
+                        <p>${title}</p>
+                        <p>${message}</p>
+                        <span>${time}${eventType ? ` · ${eventType}` : ''}</span>
+                    </div>
+                </li>`;
+        }).join('');
     }
 
-    async function loadNotifications() {
-        if (!userId || loading) return;
-        loading = true;
+    async function loadNotifications({ quiet = false } = {}) {
+        if (!state.userId || state.loading) return;
+        state.loading = true;
         try {
             const { data, error } = await db
                 .from('notifications')
-                .select('id,user_id,title,message,is_read,created_at')
-                .eq('user_id', userId)
+                .select('id,user_id,title,message,is_read,created_at,event_type,entity_type,entity_id,href')
+                .eq('user_id', state.userId)
                 .order('created_at', { ascending: false })
                 .limit(30);
-
             if (error) throw error;
-            notifications = Array.isArray(data) ? data : [];
+            state.notifications = Array.isArray(data) ? data : [];
             render();
         } catch (error) {
-            console.error('Could not load staff notifications:', error);
-            list.innerHTML = '<li class="notif-empty" style="justify-content:center;padding:28px 16px;color:var(--text-3);">Notifications could not be loaded</li>';
+            console.error('[CMDI Notifications] Could not load notifications:', error);
+            if (!quiet) {
+                list.innerHTML = '<li class="notif-empty" style="justify-content:center;padding:28px 16px;color:var(--text-3);">Notifications could not be loaded</li>';
+            }
         } finally {
-            loading = false;
+            state.loading = false;
         }
     }
 
     async function markRead(id) {
-        if (!userId) return;
+        if (!state.userId || !id) return false;
         const { error } = await db
             .from('notifications')
             .update({ is_read: true })
             .eq('id', id)
-            .eq('user_id', userId);
+            .eq('user_id', state.userId)
+            .eq('is_read', false);
         if (error) {
-            console.error('Could not mark notification as read:', error);
-            return;
+            console.error('[CMDI Notifications] Could not mark notification as read:', error);
+            return false;
         }
-        const item = notifications.find(notification => String(notification.id) === String(id));
+        const item = state.notifications.find(row => String(row.id) === String(id));
         if (item) item.is_read = true;
         render();
+        return true;
     }
 
     async function markAllRead() {
-        if (!userId) return;
+        if (!state.userId) return;
+        if (markAllButton) markAllButton.disabled = true;
         const { error } = await db
             .from('notifications')
             .update({ is_read: true })
-            .eq('user_id', userId)
+            .eq('user_id', state.userId)
             .eq('is_read', false);
         if (error) {
-            console.error('Could not mark all notifications as read:', error);
+            console.error('[CMDI Notifications] Could not mark all as read:', error);
+            if (markAllButton) markAllButton.disabled = false;
             return;
         }
-        notifications = notifications.map(item => ({ ...item, is_read: true }));
+        state.notifications = state.notifications.map(item => ({ ...item, is_read: true }));
         render();
     }
 
+    async function handleNotificationActivation(row) {
+        const id = row?.dataset.notificationId;
+        if (!id) return;
+        const href = safeHref(row.dataset.href);
+        const marked = await markRead(id);
+        if (href && marked) window.location.assign(href);
+    }
+
     async function init() {
+        if (state.initialized) return;
         if (window.RBAC?.ready) await window.RBAC.ready;
         if (window.RBAC?.realRole && !window.RBAC.realRole()) return;
 
         const { data: sessionData, error: sessionError } = await db.auth.getSession();
-        if (sessionError || !sessionData?.session?.user) return;
-        userId = sessionData.session.user.id;
+        if (sessionError) throw sessionError;
+        const user = sessionData?.session?.user;
+        if (!user?.id) return;
 
+        state.userId = user.id;
+        state.initialized = true;
         await loadNotifications();
 
-        channel = db.channel(`cmdi-staff-notifications-${userId}`)
+        state.channel = db.channel(`cmdi-staff-notifications-${state.userId}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'notifications',
-                filter: `user_id=eq.${userId}`
-            }, () => loadNotifications())
+                filter: `user_id=eq.${state.userId}`
+            }, () => loadNotifications({ quiet: true }))
             .subscribe(status => {
-                if (status === 'CHANNEL_ERROR') {
-                    console.warn('Staff notification realtime channel reported an error.');
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn('[CMDI Notifications] Realtime unavailable; fallback refresh remains active.');
                 }
             });
 
         button.addEventListener('click', event => {
             event.stopPropagation();
             menu.hidden = !menu.hidden;
-            if (!menu.hidden) loadNotifications();
+            if (!menu.hidden) loadNotifications({ quiet: true });
         });
 
         markAllButton?.addEventListener('click', event => {
@@ -153,8 +200,7 @@
 
         list.addEventListener('click', event => {
             const row = event.target.closest('[data-notification-id]');
-            if (!row) return;
-            markRead(row.dataset.notificationId);
+            if (row) handleNotificationActivation(row);
         });
 
         list.addEventListener('keydown', event => {
@@ -162,26 +208,22 @@
             const row = event.target.closest('[data-notification-id]');
             if (!row) return;
             event.preventDefault();
-            markRead(row.dataset.notificationId);
+            handleNotificationActivation(row);
         });
 
         document.addEventListener('click', event => {
-            if (!menu.hidden && !event.target.closest('.topbar-icon-wrap')) {
-                menu.hidden = true;
-            }
+            if (!menu.hidden && !event.target.closest('.topbar-icon-wrap')) menu.hidden = true;
         });
-
         document.addEventListener('keydown', event => {
             if (event.key === 'Escape') menu.hidden = true;
         });
 
+        state.pollTimer = window.setInterval(() => loadNotifications({ quiet: true }), 60000);
         window.addEventListener('beforeunload', () => {
-            if (channel) db.removeChannel(channel);
-        });
-
-        // Fallback refresh if Realtime temporarily disconnects.
-        setInterval(() => loadNotifications(), 60000);
+            if (state.pollTimer) clearInterval(state.pollTimer);
+            if (state.channel) db.removeChannel(state.channel);
+        }, { once: true });
     }
 
-    init().catch(error => console.error('Notification initialization failed:', error));
+    init().catch(error => console.error('[CMDI Notifications] Initialization failed:', error));
 })();
