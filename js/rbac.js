@@ -1,6 +1,6 @@
 /* ==========================================================
    CMDI — Staff Role-Based Access Control (RBAC)
-   Shared by every CMDI staff page. Database profile role is authoritative.
+   Shared by every staff page. Do not edit per-page.
    ========================================================== */
 (function () {
     'use strict';
@@ -14,7 +14,7 @@
             name: 'Staff',
             initials: 'ST',
             home: 'staff-dashboard.html',
-            nav: ['dashboard', 'guests', 'scanner', 'rooms', 'checkin', 'requests'],
+            nav: ['dashboard', 'guests', 'rooms', 'checkin', 'scanner', 'requests'],
             // What the role can DO (used by element gating and data filtering)
             permissions: {
                 'dashboard.view': true,
@@ -26,11 +26,11 @@
                 'checkin.view': true,
                 'checkin.do': true,
                 'checkin.force': false,
-                'bookings.approve': true,
                 'registration.scan': true,
                 'requests.view': 'all',      // 'all' or 'housekeeping' or false
                 'requests.assign': true,
                 'reports.view': false,
+                'audit.view': false,
                 'settings.view': false
             }
         },
@@ -50,11 +50,11 @@
                 'checkin.view': false,
                 'checkin.do': false,
                 'checkin.force': false,
-                'bookings.approve': false,
                 'registration.scan': false,
                 'requests.view': 'housekeeping',
                 'requests.assign': false,
                 'reports.view': false,
+                'audit.view': false,
                 'settings.view': false
             }
         },
@@ -74,11 +74,11 @@
                 'checkin.view': false,
                 'checkin.do': false,
                 'checkin.force': false,
-                'bookings.approve': false,
                 'registration.scan': false,
                 'requests.view': 'maintenance',
                 'requests.assign': false,
                 'reports.view': false,
+                'audit.view': false,
                 'settings.view': false
             }
         },
@@ -98,11 +98,11 @@
                 'checkin.view': true,
                 'checkin.do': true,
                 'checkin.force': true,
-                'bookings.approve': false,
                 'registration.scan': false,
                 'requests.view': 'all',
                 'requests.assign': true,
                 'reports.view': true,
+                'audit.view': true,
                 'settings.view': true
             }
         }
@@ -114,11 +114,11 @@
     const NAV_ITEMS = {
         dashboard: { label: 'Dashboard',          href: 'staff-dashboard.html',        icon: 'grid' },
         guests:    { label: 'Guests',             href: 'staff-guests.html',           icon: 'users' },
-        scanner:   { label: 'QR Scanner',         href: 'staff-qr-scanner.html',       icon: 'qr' },
         rooms:     { label: 'Rooms',              href: 'staff-rooms.html',            icon: 'home' },
         checkin:   { label: 'Check-in / out',     href: 'staff-checkin.html',          icon: 'check' },
         requests:  { label: 'Service requests',   href: 'staff-requests.html',         icon: 'chat', badge: true },
-        reports:   { label: 'Reports',            href: 'staff-reports.html',          icon: 'chart' },
+        scanner:   { label: 'QR Registration Scanner', href: 'staff-qr-scanner.html', icon: 'check' },
+        reports:   { label: 'Reports & Audit Trail', href: 'staff-reports.html',          icon: 'chart' },
         settings:  { label: 'Staff & settings',   href: 'staff-settings.html',         icon: 'settings' }
     };
 
@@ -128,7 +128,6 @@
     const ICONS = {
         grid: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>`,
         users: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
-        qr: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM20 14v2M14 20h2M20 20h1"></path></svg>`,
         home: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>`,
         check: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>`,
         chat: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`,
@@ -138,30 +137,24 @@
 
     /* ==========================================
        ROLE STATE (verified against the database)
-       The database is the only source of role authority. No client-side
-       role preview, role switching, or local role cache is used.
+       The browser only CACHES the role for fast page loads; it is re-checked
+       against profiles.role on every page. Real enforcement = database rules.
        ========================================== */
+    const CACHE_KEY = 'haven_role_cache';        // { uid, role }
+    const RELOAD_KEY = 'haven_rbac_reload';
     const STAFF_ROLES = Object.keys(ROLES);
-    const LEGACY_ROLE_CACHE_KEY = 'haven_role_cache';
-    const LEGACY_VIEW_AS_KEY = 'haven_view_as';
-    const state = {
-        realRole: null,
-        userId: null,
-        name: 'Staff',
-        initials: 'ST',
-        verified: false,
-        denied: false
-    };
 
-    function clearLegacyRoleState() {
-        try { localStorage.removeItem(LEGACY_ROLE_CACHE_KEY); } catch (e) { /* storage may be blocked */ }
-        try { sessionStorage.removeItem(LEGACY_VIEW_AS_KEY); } catch (e) { /* storage may be blocked */ }
-    }
+    const state = { realRole: null, userId: null, name: 'Staff', initials: 'ST', verified: false, denied: false };
 
-    function currentNavKey() {
-        const page = (window.location.pathname.split('/').pop() || 'staff-dashboard.html').toLowerCase();
-        const match = Object.entries(NAV_ITEMS).find(([, item]) => item.href.toLowerCase() === page);
-        return match ? match[0] : null;
+    function safeParse(json) { try { return JSON.parse(json); } catch (e) { return null; } }
+    function readCache() { return safeParse(localStorage.getItem(CACHE_KEY)); }
+    function writeCache(uid, role) { localStorage.setItem(CACHE_KEY, JSON.stringify({ uid, role })); }
+    function clearCache() { localStorage.removeItem(CACHE_KEY); sessionStorage.removeItem('haven_view_as'); }
+
+    function isViewingAs() { return false; }
+
+    function effectiveRole() {
+        return state.verified && ROLES[state.realRole] ? state.realRole : null;
     }
 
     function makeInitials(name) {
@@ -228,15 +221,28 @@
 
     /* ---------- sign out (also ends the Supabase session) ---------- */
     async function signOut() {
-        clearLegacyRoleState();
+        clearCache();
         try { if (window.supabaseClient) await window.supabaseClient.auth.signOut(); } catch (e) { /* ignore */ }
         window.location.href = 'index.html';
+    }
+
+    /* ---------- reload once when the cached role was missing or stale ---------- */
+    function reloadOnce() {
+        const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+        if (Date.now() - last < 10000) return false;     // avoid reload loops
+        sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+        window.location.reload();
+        return true;
     }
 
     /* ---------- the check: who is signed in, and what is their role? ---------- */
     async function verifyAccess() {
         const db = window.supabaseClient;
         if (!db) {
+            state.realRole = null;
+            state.verified = false;
+            state.denied = true;
+            clearCache();
             showGate({ title: 'Cannot connect', warn: true, icon: 'lock',
                 message: 'The connection to the server is not available. Check that the Supabase scripts are on this page.',
                 actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() }] });
@@ -246,6 +252,10 @@
         let session = null;
         try { ({ data: { session } } = await db.auth.getSession()); } catch (e) { session = null; }
         if (!session) {
+            state.realRole = null;
+            state.verified = false;
+            state.denied = true;
+            clearCache();
             const page = window.location.pathname.split('/').pop() || '';
             window.location.href = 'index.html' + (/^staff-[a-z]+\.html$/.test(page) ? '?next=' + encodeURIComponent(page) : '');
             return;
@@ -253,6 +263,10 @@
 
         const { data: p, error } = await db.from('profiles').select('*').eq('id', session.user.id).single();
         if (error || !p) {
+            state.realRole = null;
+            state.verified = false;
+            state.denied = true;
+            clearCache();
             showGate({ title: 'We could not check your access', warn: true,
                 message: 'Please try again. If this keeps happening, contact a manager.',
                 actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() },
@@ -266,66 +280,43 @@
         Object.values(ROLES).forEach((r) => { r.name = state.name; r.initials = state.initials; });
 
         const expired = p.access_expires_at && new Date(p.access_expires_at) < new Date();
-        if (p.status === 'suspended' || expired) {
+        const inactive = String(p.status || '').toLowerCase() !== 'active';
+        if (inactive || expired) {
+            state.realRole = null;
+            state.verified = false;
             state.denied = true;
-            clearLegacyRoleState();
-            showGate({ title: expired ? 'Access expired' : 'Account suspended', icon: 'lock',
+            clearCache();
+            showGate({ title: expired ? 'Access expired' : 'Account inactive', icon: 'lock',
                 message: expired ? 'Your access period has ended. Please contact an administrator.'
-                                 : 'This account has been suspended. Please contact an administrator.',
+                                 : 'This account is not active. Please contact an administrator.',
                 actions: [{ label: 'Sign out', primary: true, onClick: signOut }] });
             return;
         }
 
         const role = STAFF_ROLES.includes(p.role) ? p.role : null;
         if (!role) {
+            state.realRole = null;
+            state.verified = false;
             state.denied = true;
-            clearLegacyRoleState();
+            clearCache();
             showGate({ title: 'Staff area', icon: 'lock',
-                message: 'This part of CMDI is for authorized staff only. Your account does not have a staff role.',
+                message: 'This part of CMDI is for staff only. Your account does not have staff access.',
                 actions: [{ label: 'Go to my dashboard', primary: true, href: 'client-dashboard.html' },
                           { label: 'Sign out', onClick: signOut }] });
             return;
         }
 
-        // Confirm the account is usable using the existing SECURITY DEFINER helper.
-        // This prevents a stale or manually edited browser value from granting access.
-        let staffCheck;
-        try {
-            const result = await db.rpc('is_staff');
-            if (result.error) throw result.error;
-            staffCheck = result.data;
-        } catch (checkError) {
-            console.error('CMDI staff authorization check failed:', checkError);
-            state.denied = true;
-            clearLegacyRoleState();
-            showGate({ title: 'Unable to verify staff access', warn: true,
-                message: 'CMDI could not verify your staff permissions. Please try again or contact the Manager.',
-                actions: [{ label: 'Try again', primary: true, onClick: () => window.location.reload() },
-                          { label: 'Sign out', onClick: signOut }] });
-            return;
-        }
-
-        if (staffCheck !== true) {
-            state.denied = true;
-            clearLegacyRoleState();
-            showGate({ title: 'Staff access unavailable', icon: 'lock',
-                message: 'Your account is not currently authorized for staff access. Please contact the Manager.',
-                actions: [{ label: 'Sign out', primary: true, onClick: signOut }] });
-            return;
-        }
-
+        const cache = readCache();
+        const changed = !cache || cache.uid !== session.user.id || cache.role !== role;
         state.realRole = role;
         state.verified = true;
+        writeCache(session.user.id, role);
+
+        if (changed && reloadOnce()) return;       // pages were built with a different/unknown role
         hideGate();
-
-        // Direct URL access is checked as well as sidebar visibility.
-        const activeKey = currentNavKey();
-        if (activeKey && !RBAC.guardPage(activeKey)) return;
-
         RBAC.applyIdentity();
-        RBAC.applySidebar(activeKey);
-        RBAC.applyElementGating();
-        RBAC.applyLogout();
+        RBAC.applyRoleSwitcher();
+        RBAC.applyLogout();      // also covers pages that don't call RBAC.init yet
     }
 
     /* ==========================================
@@ -335,27 +326,31 @@
         ROLES,
         NAV_ITEMS,
 
-        /* --- Current role: always the verified database role --- */
-        getRole() { return state.verified ? state.realRole : null; },
-        realRole() { return state.verified ? state.realRole : null; },
+        /* --- Current role --- */
+        getRole() { return state.verified && ROLES[state.realRole] ? state.realRole : null; },
+        realRole() { return state.verified && ROLES[state.realRole] ? state.realRole : null; },
         isManager() { return state.verified && state.realRole === 'manager'; },
         isViewingAs() { return false; },
-        // Kept only as a compatibility stub for older page scripts. Role changes are never allowed here.
+        /* Assigned roles are immutable in the staff UI. */
         setRole() { return false; },
-        getProfile() { return state.verified && state.realRole ? ROLES[state.realRole] : null; },
+        getProfile() { const role = effectiveRole(); return role ? ROLES[role] : null; },
+        userId() { return state.verified ? state.userId : null; },
         signOut() { return signOut(); },
-        ready: null,
+        ready: null,   // set below: resolves when the database check has finished
         can(perm) {
-            const profile = this.getProfile();
-            return !!profile && profile.permissions[perm] === true;
+            if (!state.verified || !ROLES[state.realRole]) return false;
+            const p = ROLES[state.realRole].permissions;
+            return p[perm] === true;
         },
         canView(navKey) {
-            const profile = this.getProfile();
-            return !!profile && profile.nav.includes(navKey);
+            if (!state.verified || !ROLES[state.realRole]) return false;
+            return ROLES[state.realRole].nav.includes(navKey);
         },
+        /* Data filter helpers */
         requestsScope() {
-            const profile = this.getProfile();
-            return profile ? profile.permissions['requests.view'] : false;
+            return state.verified && ROLES[state.realRole]
+                ? ROLES[state.realRole].permissions['requests.view']
+                : false;
         },
 
         /* ==========================================
@@ -388,6 +383,7 @@
                 const item = NAV_ITEMS[key];
                 if (!item) return;
 
+                const isManagerOnly = (key === 'reports' || key === 'settings');
                 const isActive = key === activeKey;
 
                 const a = document.createElement('a');
@@ -424,28 +420,23 @@
             const setText = (sel, text) => {
                 document.querySelectorAll(sel).forEach((el) => (el.textContent = text));
             };
-            setText('.staff-name', state.name);
+            setText('.staff-name', role.name);
             setText('#staffRoleLabel', role.label);
             setText('#roleBreadcrumb', role.label);
-            setText('#assignedRoleValue', role.label);
-            setText('.topbar-avatar', state.initials);
-            setText('.staff-avatar', state.initials);
-            setText('.mobile-topbar .topbar-avatar', state.initials);
-            document.body.dataset.role = state.realRole;
+            setText('.topbar-avatar', role.initials);
+            setText('.staff-avatar', role.initials);
+            setText('.mobile-topbar .topbar-avatar', role.initials);
         },
 
         /* ==========================================
-           APPLY: immutable assigned-role display
+           APPLY: role switcher dropdown
            ========================================== */
-        applyAssignedRole() {
+        applyRoleSwitcher() {
             const profile = this.getProfile();
             if (!profile) return;
-
-            // Remove legacy role selectors entirely. A disabled select can still
-            // be re-enabled by an older script, so the page must not keep a select.
             document.querySelectorAll('select#roleSelect').forEach((select) => {
                 const wrapper = select.closest('.role-select-wrap') || select.parentElement;
-                const roleBox = select.closest('.role-switcher') || wrapper?.parentElement;
+                const box = select.closest('.role-switcher') || wrapper?.parentElement;
                 let value = wrapper?.querySelector('#assignedRoleValue');
                 if (!value) {
                     value = document.createElement('span');
@@ -455,39 +446,16 @@
                 } else {
                     select.remove();
                 }
-
-                if (wrapper) {
-                    wrapper.classList.add('is-locked');
-                    wrapper.setAttribute('role', 'status');
-                    wrapper.setAttribute('aria-live', 'polite');
-                    wrapper.setAttribute('aria-label', `Assigned staff role: ${profile.label}`);
-                    if (!wrapper.querySelector('.role-lock-icon')) {
-                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                        svg.setAttribute('class', 'role-lock-icon');
-                        svg.setAttribute('width', '14');
-                        svg.setAttribute('height', '14');
-                        svg.setAttribute('viewBox', '0 0 24 24');
-                        svg.setAttribute('fill', 'none');
-                        svg.setAttribute('stroke', 'currentColor');
-                        svg.setAttribute('stroke-width', '2');
-                        svg.setAttribute('stroke-linecap', 'round');
-                        svg.setAttribute('stroke-linejoin', 'round');
-                        svg.setAttribute('aria-hidden', 'true');
-                        svg.innerHTML = '<rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path>';
-                        wrapper.appendChild(svg);
-                    }
-                }
-
-                const roleLabel = roleBox?.querySelector('.role-label');
-                if (roleLabel) {
-                    roleLabel.textContent = 'ASSIGNED ROLE';
-                    roleLabel.removeAttribute('for');
-                }
+                wrapper?.classList.add('is-locked');
+                if (box?.querySelector('.role-label')) box.querySelector('.role-label').textContent = 'ASSIGNED ROLE';
             });
-
-            document.querySelectorAll('#assignedRoleValue').forEach((value) => {
-                value.textContent = profile.label;
-                value.classList.add('assigned-role-value');
+            document.querySelectorAll('#assignedRoleValue').forEach((el) => {
+                el.textContent = profile.label;
+                el.classList.add('assigned-role-value');
+            });
+            document.querySelectorAll('.role-select-wrap').forEach((el) => {
+                el.classList.add('is-locked');
+                el.setAttribute('aria-label', 'Assigned role: ' + profile.label);
             });
         },
 
@@ -511,7 +479,7 @@
         applyElementGating() {
             const role = this.getRole();
             document.querySelectorAll('[data-requires]').forEach((el) => {
-                const roles = el.dataset.requires.split(/[|,]/).map((s) => s.trim());
+                const roles = el.dataset.requires.split(',').map((s) => s.trim());
                 if (roles.includes(role)) {
                     el.removeAttribute('hidden');
                     el.removeAttribute('aria-disabled');
@@ -521,21 +489,11 @@
                 }
             });
             document.querySelectorAll('[data-requires-any]').forEach((el) => {
-                const roles = el.dataset.requiresAny.split(/[|,]/).map((s) => s.trim());
+                const roles = el.dataset.requiresAny.split(',').map((s) => s.trim());
                 if (roles.includes(role)) {
                     el.removeAttribute('hidden');
                 } else {
                     el.setAttribute('hidden', '');
-                }
-            });
-            document.querySelectorAll('[data-permission]').forEach((el) => {
-                const allowed = this.can(el.dataset.permission.trim());
-                if (allowed) {
-                    el.removeAttribute('hidden');
-                    el.removeAttribute('aria-disabled');
-                } else {
-                    el.setAttribute('hidden', '');
-                    el.setAttribute('aria-disabled', 'true');
                 }
             });
         },
@@ -547,18 +505,11 @@
            a "No access" screen.
            ========================================== */
         guardPage(navKey) {
-            if (!state.verified || !state.realRole) return false;
+            if (!state.verified || !ROLES[state.realRole]) return false;
             if (this.canView(navKey)) return true;
-            // Build a clear no-access state. On pages without the shared layout,
-            // use the same full-screen RBAC gate instead of leaving the page exposed.
+            // Build No-access UI
             const layout = document.querySelector('.dashboard-layout');
-            if (!layout) {
-                showGate({ title: 'No access', icon: 'lock',
-                    message: `Your assigned role (${ROLES[state.realRole].label}) cannot access this section.`,
-                    actions: [{ label: 'Go to Dashboard', primary: true, href: ROLES[state.realRole].home },
-                              { label: 'Sign out', onClick: signOut }] });
-                return false;
-            }
+            if (!layout) return false;
             const denied = document.createElement('section');
             denied.className = 'rbac-denied';
             denied.innerHTML = `
@@ -598,11 +549,6 @@
                 document.head.appendChild(style);
             }
             return false;
-        },
-
-        guardCurrentPage() {
-            const navKey = currentNavKey();
-            return navKey ? this.guardPage(navKey) : true;
         },
 
         /* ==========================================
@@ -748,12 +694,11 @@
            BOOTSTRAP — call once per page
            ========================================== */
         init({ active } = {}) {
-            if (state.denied || !state.verified) return false;
+            if (state.denied || !state.verified || !ROLES[state.realRole]) return false;
             if (active && !this.guardPage(active)) return false;
-            if (!active && !this.guardCurrentPage()) return false;
-            this.applySidebar(active || currentNavKey());
+            this.applySidebar(active);
             this.applyIdentity();
-            this.applyAssignedRole();
+            this.applyRoleSwitcher();
             this.applyElementGating();
             this.applyLogout();
             return true;
@@ -766,11 +711,13 @@
        START: use the cached role right away, then verify with the database
        ========================================== */
     function start() {
-        clearLegacyRoleState();
+        // Never use a cached role to render protected content before the current
+        // session and profiles.role have been checked. Cache is read only after
+        // the live profile query inside verifyAccess().
         state.realRole = null;
         state.verified = false;
         showGate({ title: 'Checking your access…', icon: 'spinner',
-            message: 'One moment while CMDI confirms your assigned staff role.' });
+            message: 'One moment while we confirm your staff account.' });
         RBAC.ready = verifyAccess();
     }
     if (document.body) start();

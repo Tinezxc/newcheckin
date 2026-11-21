@@ -1,229 +1,80 @@
-/* ==========================================================
-   CMDI STAFF NOTIFICATIONS — PHASE 5
-   - Reads only the signed-in user's notification rows.
-   - DB triggers create role-targeted notifications.
-   - Supports unread badge, mark read, mark all read, safe related-page links,
-     Supabase Realtime, and a 60-second fallback refresh.
-   ========================================================== */
+/* CMDI notifications: own-user rows only; RLS enforces ownership. */
 (() => {
-    'use strict';
-
-    const db = window.supabaseClient;
-    const button = document.getElementById('notifBtn');
-    const menu = document.getElementById('notifMenu');
-    const list = menu?.querySelector('.notif-menu-list');
-    const badge = button?.querySelector('.icon-badge');
-    const markAllButton = menu?.querySelector('.notif-menu-header .link-muted');
-
-    if (!db || !button || !menu || !list) return;
-
-    const state = {
-        userId: null,
-        channel: null,
-        notifications: [],
-        loading: false,
-        pollTimer: null,
-        initialized: false
-    };
-
-    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char]);
-
-    const ALLOWED_LINKS = new Set([
-        'staff-dashboard.html',
-        'staff-requests.html',
-        'staff-checkin.html',
-        'staff-reports.html'
-    ]);
-
-    function safeHref(value) {
-        const href = String(value || '').trim();
-        return ALLOWED_LINKS.has(href) ? href : null;
+  'use strict';
+  const allowed = new Set(['staff-dashboard.html','staff-guests.html','staff-rooms.html','staff-checkin.html','staff-requests.html','staff-reports.html','staff-settings.html','staff-qr-scanner.html']);
+  const $ = id => document.getElementById(id);
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const button = $('notifBtn'), menu = $('notifMenu'), list = menu?.querySelector('.notif-menu-list');
+  const badge = button?.querySelector('.icon-badge'), markAll = menu?.querySelector('.link-muted');
+  if (!button || !menu || !list) return;
+  let db, userId, channel, timer, rows = [], loading = false, queued = false, initialized = false;
+  function safeHref(value) { const href = String(value || '').trim(); return allowed.has(href) ? href : null; }
+  function ago(value) {
+    const ms = Date.now() - new Date(value).getTime(); if (!Number.isFinite(ms)) return '';
+    const m = Math.max(0, Math.floor(ms / 60000)); if (m < 1) return 'Just now'; if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60); if (h < 24) return `${h} hr ago`; return `${Math.floor(h / 24)} d ago`;
+  }
+  function render() {
+    const unread = rows.filter(r => !r.is_read).length;
+    if (badge) { badge.textContent = unread > 9 ? '9+' : String(unread); badge.hidden = unread === 0; }
+    button.setAttribute('aria-label', unread ? `Notifications, ${unread} unread` : 'Notifications, none unread');
+    if (markAll) markAll.disabled = unread === 0;
+    if (!rows.length) { list.innerHTML = '<li class="notif-empty">No notifications yet</li>'; return; }
+    list.innerHTML = rows.map(r => {
+      const href = safeHref(r.href);
+      return `<li class="${r.is_read ? '' : 'unread'}" data-notification-id="${esc(r.id)}" ${href ? `data-href="${href}"` : ''} tabindex="0" role="${href ? 'link' : 'button'}"><div class="notif-content"><p><strong>${esc(r.title || 'Notification')}</strong></p><p>${esc(r.message || '')}</p><span>${esc(ago(r.created_at))}</span></div></li>`;
+    }).join('');
+  }
+  async function load(quiet = false) {
+    if (!db || !userId) return;
+    if (loading) { queued = true; return; }
+    loading = true;
+    try {
+      const { data, error } = await db.from('notifications').select('id,user_id,title,message,is_read,created_at,event_type,href').eq('user_id', userId).order('created_at', { ascending: false }).limit(30);
+      if (error) throw error;
+      rows = Array.isArray(data) ? data : []; render();
+    } catch (error) {
+      console.error('[CMDI notifications]', error);
+      if (!quiet) list.innerHTML = '<li class="notif-empty">Notifications could not be loaded.</li>';
+    } finally {
+      loading = false;
+      if (queued) { queued = false; queueMicrotask(() => load(true)); }
     }
-
-    function relativeTime(value) {
-        const timestamp = new Date(value).getTime();
-        if (!Number.isFinite(timestamp)) return '';
-        const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
-        if (minutes < 1) return 'Just now';
-        if (minutes < 60) return `${minutes} min ago`;
-        const hours = Math.floor(minutes / 60);
-        if (hours < 24) return `${hours} hr ago`;
-        const days = Math.floor(hours / 24);
-        if (days < 30) return `${days} d ago`;
-        return new Date(timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
-
-    function render() {
-        const unread = state.notifications.filter(item => !item.is_read).length;
-        if (badge) {
-            badge.textContent = unread > 9 ? '9+' : String(unread);
-            badge.hidden = unread === 0;
-        }
-        button.setAttribute('aria-label', unread
-            ? `Notifications, ${unread} unread`
-            : 'Notifications, none unread');
-        if (markAllButton) markAllButton.disabled = unread === 0;
-
-        if (!state.notifications.length) {
-            list.innerHTML = '<li class="notif-empty" style="justify-content:center;padding:28px 16px;color:var(--text-3);">No notifications yet</li>';
-            return;
-        }
-
-        list.innerHTML = state.notifications.map(item => {
-            const href = safeHref(item.href);
-            const title = esc(item.title || 'Notification');
-            const message = esc(item.message || '');
-            const time = esc(relativeTime(item.created_at));
-            const eventType = esc(String(item.event_type || '').replace(/[._]/g, ' '));
-            return `
-                <li class="${item.is_read ? '' : 'unread'}"
-                    data-notification-id="${esc(item.id)}"
-                    ${href ? `data-href="${href}"` : ''}
-                    tabindex="0"
-                    role="${href ? 'link' : 'button'}"
-                    aria-label="${title}. ${message}${href ? '. Open related page' : '. Mark as read'}">
-                    <span class="notif-dot ${item.is_read ? 'empty' : ''}"></span>
-                    <div class="notif-content">
-                        <p>${title}</p>
-                        <p>${message}</p>
-                        <span>${time}${eventType ? ` · ${eventType}` : ''}</span>
-                    </div>
-                </li>`;
-        }).join('');
-    }
-
-    async function loadNotifications({ quiet = false } = {}) {
-        if (!state.userId || state.loading) return;
-        state.loading = true;
-        try {
-            const { data, error } = await db
-                .from('notifications')
-                .select('id,user_id,title,message,is_read,created_at,event_type,entity_type,entity_id,href')
-                .eq('user_id', state.userId)
-                .order('created_at', { ascending: false })
-                .limit(30);
-            if (error) throw error;
-            state.notifications = Array.isArray(data) ? data : [];
-            render();
-        } catch (error) {
-            console.error('[CMDI Notifications] Could not load notifications:', error);
-            if (!quiet) {
-                list.innerHTML = '<li class="notif-empty" style="justify-content:center;padding:28px 16px;color:var(--text-3);">Notifications could not be loaded</li>';
-            }
-        } finally {
-            state.loading = false;
-        }
-    }
-
-    async function markRead(id) {
-        if (!state.userId || !id) return false;
-        const { error } = await db
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('id', id)
-            .eq('user_id', state.userId)
-            .eq('is_read', false);
-        if (error) {
-            console.error('[CMDI Notifications] Could not mark notification as read:', error);
-            return false;
-        }
-        const item = state.notifications.find(row => String(row.id) === String(id));
-        if (item) item.is_read = true;
-        render();
-        return true;
-    }
-
-    async function markAllRead() {
-        if (!state.userId) return;
-        if (markAllButton) markAllButton.disabled = true;
-        const { error } = await db
-            .from('notifications')
-            .update({ is_read: true })
-            .eq('user_id', state.userId)
-            .eq('is_read', false);
-        if (error) {
-            console.error('[CMDI Notifications] Could not mark all as read:', error);
-            if (markAllButton) markAllButton.disabled = false;
-            return;
-        }
-        state.notifications = state.notifications.map(item => ({ ...item, is_read: true }));
-        render();
-    }
-
-    async function handleNotificationActivation(row) {
-        const id = row?.dataset.notificationId;
-        if (!id) return;
-        const href = safeHref(row.dataset.href);
-        const marked = await markRead(id);
-        if (href && marked) window.location.assign(href);
-    }
-
-    async function init() {
-        if (state.initialized) return;
-        if (window.RBAC?.ready) await window.RBAC.ready;
-        if (window.RBAC?.realRole && !window.RBAC.realRole()) return;
-
-        const { data: sessionData, error: sessionError } = await db.auth.getSession();
-        if (sessionError) throw sessionError;
-        const user = sessionData?.session?.user;
-        if (!user?.id) return;
-
-        state.userId = user.id;
-        state.initialized = true;
-        await loadNotifications();
-
-        state.channel = db.channel(`cmdi-staff-notifications-${state.userId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'notifications',
-                filter: `user_id=eq.${state.userId}`
-            }, () => loadNotifications({ quiet: true }))
-            .subscribe(status => {
-                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-                    console.warn('[CMDI Notifications] Realtime unavailable; fallback refresh remains active.');
-                }
-            });
-
-        button.addEventListener('click', event => {
-            event.stopPropagation();
-            menu.hidden = !menu.hidden;
-            if (!menu.hidden) loadNotifications({ quiet: true });
-        });
-
-        markAllButton?.addEventListener('click', event => {
-            event.stopPropagation();
-            markAllRead();
-        });
-
-        list.addEventListener('click', event => {
-            const row = event.target.closest('[data-notification-id]');
-            if (row) handleNotificationActivation(row);
-        });
-
-        list.addEventListener('keydown', event => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            const row = event.target.closest('[data-notification-id]');
-            if (!row) return;
-            event.preventDefault();
-            handleNotificationActivation(row);
-        });
-
-        document.addEventListener('click', event => {
-            if (!menu.hidden && !event.target.closest('.topbar-icon-wrap')) menu.hidden = true;
-        });
-        document.addEventListener('keydown', event => {
-            if (event.key === 'Escape') menu.hidden = true;
-        });
-
-        state.pollTimer = window.setInterval(() => loadNotifications({ quiet: true }), 60000);
-        window.addEventListener('beforeunload', () => {
-            if (state.pollTimer) clearInterval(state.pollTimer);
-            if (state.channel) db.removeChannel(state.channel);
-        }, { once: true });
-    }
-
-    init().catch(error => console.error('[CMDI Notifications] Initialization failed:', error));
+  }
+  async function markRead(id) {
+    const { error } = await db.from('notifications').update({ is_read: true }).eq('id', id).eq('user_id', userId).eq('is_read', false);
+    if (error) { console.error('[CMDI mark notification read]', error); return false; }
+    rows = rows.map(row => String(row.id) === String(id) ? { ...row, is_read: true } : row); render(); return true;
+  }
+  async function activate(row) {
+    const id = row?.dataset.notificationId; if (!id) return;
+    const href = safeHref(row.dataset.href);
+    if (await markRead(id) && href) window.location.assign(href);
+  }
+  async function init() {
+    if (initialized || !window.supabaseClient || !window.RBAC?.ready) return;
+    await window.RBAC.ready;
+    const role = window.RBAC.realRole?.();
+    if (!['manager', 'front-desk', 'housekeeping', 'maintenance'].includes(role)) return;
+    db = window.supabaseClient;
+    const { data, error } = await db.auth.getUser(); if (error) throw error;
+    userId = data.user?.id; if (!userId) return;
+    initialized = true;
+    channel = db.channel(`cmdi-notifications-${userId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, () => load(true)).subscribe();
+    await load();
+    button.addEventListener('click', event => { event.stopPropagation(); menu.hidden = !menu.hidden; if (!menu.hidden) load(true); });
+    markAll?.addEventListener('click', async event => {
+      event.stopPropagation(); markAll.disabled = true;
+      const { error: updateError } = await db.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
+      if (updateError) { console.error('[CMDI mark all read]', updateError); markAll.disabled = false; return; }
+      rows = rows.map(row => ({ ...row, is_read: true })); render();
+    });
+    list.addEventListener('click', event => { const row = event.target.closest('[data-notification-id]'); if (row) activate(row); });
+    list.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { const row = event.target.closest('[data-notification-id]'); if (row) { event.preventDefault(); activate(row); } } });
+    document.addEventListener('click', event => { if (!menu.hidden && !event.target.closest('.topbar-icon-wrap')) menu.hidden = true; });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') menu.hidden = true; });
+    timer = window.setInterval(() => load(true), 60000);
+    window.addEventListener('beforeunload', () => { if (timer) clearInterval(timer); if (channel) db.removeChannel(channel); }, { once: true });
+  }
+  window.addEventListener('load', () => init().catch(error => console.error('[CMDI notifications init]', error)), { once: true });
 })();
