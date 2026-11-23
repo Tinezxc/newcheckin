@@ -1639,3 +1639,11 @@ body.drawer-open {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* CMDI client portal navigation strip */
+.client-page-nav{width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.client-back-link{display:inline-flex;align-items:center;gap:7px;color:var(--green-dark);font-size:.78rem;font-weight:700;text-decoration:none;padding:8px 12px;border:1px solid var(--border);border-radius:999px;background:#fff;transition:background .18s ease,border-color .18s ease}
+.client-back-link:hover{background:var(--green-light);border-color:#c8d6ca}
+.client-brand{display:inline-flex;align-items:baseline;gap:9px;color:var(--green-dark);font-size:.9rem;font-weight:800;letter-spacing:.14em}
+.client-brand small{color:var(--text-muted);font-size:.6rem;font-weight:700;letter-spacing:.15em}
+@media(max-width:520px){.client-page-nav{margin-bottom:18px}.client-brand{font-size:.76rem;gap:6px}.client-brand small{font-size:.52rem}}

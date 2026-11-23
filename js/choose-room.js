@@ -62,6 +62,28 @@
     const EDGE_FUNCTION = 'dynamic-responder';
     const ACTIVE_GROUP_KEY = 'cmdi_active_group_booking_id';
     const GENDER_LABEL = { male: 'Men', female: 'Women' };
+    // CMDI operational inventory: only these numbered rooms may be shown to clients.
+    // The database remains authoritative; this is a display/selection guard only.
+    const OPERATIONAL_ROOM_CAPS = new Map([
+        ...Array.from({ length: 11 }, (_, index) => [String(201 + index), 5]),
+        ...Array.from({ length: 11 }, (_, index) => [String(301 + index), 3])
+    ]);
+
+    function normalizeOperationalRooms(rows) {
+        if (!Array.isArray(rows)) return [];
+        return rows.flatMap(room => {
+            const number = String(room?.room_number ?? '').trim();
+            const expectedFloorCapacity = OPERATIONAL_ROOM_CAPS.get(number);
+            const floor = Number(room?.floor);
+            const configuredCapacity = Number(room?.capacity);
+            const inactive = room?.is_active === false || room?.is_active === 0 || String(room?.is_active).toLowerCase() === 'false';
+            if (!expectedFloorCapacity || inactive || floor !== (number.startsWith('2') ? 2 : 3)) return [];
+            if (!Number.isFinite(configuredCapacity) || configuredCapacity < 1) return [];
+            const capacity = Math.min(configuredCapacity, expectedFloorCapacity);
+            const occupants = Math.max(0, Math.min(capacity, Number(room?.occupants) || 0));
+            return [{ ...room, room_number: number, floor, capacity, occupants, is_active: true }];
+        }).sort((a, b) => a.floor - b.floor || a.room_number.localeCompare(b.room_number, undefined, { numeric: true }));
+    }
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     let session = null;
@@ -635,10 +657,10 @@
             heading.className = 'floor-heading';
 
             const title = document.createElement('span');
-            title.textContent = `Floor ${floor}`;
+            title.textContent = `Floor ${floor} · ${floor === 2 ? 'Maximum 5 occupants per room' : 'Maximum 3 occupants per room'}`;
 
             const count = document.createElement('small');
-            count.textContent = `${open} of ${list.length} rooms open to you`;
+            count.textContent = `${open} of ${list.length} rooms available · ${floor === 2 ? '5 max / room' : '3 max / room'}`;
 
             heading.append(title, count);
             roomGrid.appendChild(heading);
@@ -732,15 +754,16 @@
             return;
         }
 
-        if (!Array.isArray(rooms) || rooms.length === 0) {
+        const operationalRooms = normalizeOperationalRooms(rooms);
+        if (!operationalRooms.length) {
             renderInlineNotice(
-                'No rooms are currently available to display. Please contact the front desk.',
+                'No operational rooms are currently available. CMDI room inventory is limited to Rooms 201–211 on Floor 2 and Rooms 301–311 on Floor 3. Please contact the front desk if this appears incorrect.',
                 'error'
             );
             return;
         }
 
-        renderRooms(rooms);
+        renderRooms(operationalRooms);
         updateSelectedRoomSummary();
         updateGroupSummary();
         updateConfirmButton();
