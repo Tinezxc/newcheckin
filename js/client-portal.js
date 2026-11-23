@@ -28,6 +28,132 @@
     if (!el) return;
     el.hidden = false; el.className = `portal-alert${type === 'error' ? ' error' : ''}`; el.textContent = message;
   }
+
+  const GUEST_ID_PATTERN = /^TR-[A-Z0-9_-]{2,50}$/i;
+
+  function closeGuestQr() {
+    const modal = $('guestQrModal');
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('guest-qr-printing');
+    $('showGuestQrBtn')?.focus();
+  }
+
+  function openGuestQr(guestId, fullName) {
+    const id = String(guestId || '').trim().toUpperCase();
+    const modal = $('guestQrModal');
+    const codeBox = $('guestQrCode');
+    const errorBox = $('guestQrError');
+    if (!GUEST_ID_PATTERN.test(id)) {
+      showMessage('Your CMDI Guest ID is missing or invalid. Please contact Front Desk.');
+      return;
+    }
+    if (!window.QRCode) {
+      showMessage('The QR generator did not load. Refresh the page or contact Front Desk.');
+      return;
+    }
+    if (!modal || !codeBox) {
+      showMessage('The QR display is unavailable on this page. Please refresh or contact Front Desk.');
+      return;
+    }
+
+    codeBox.replaceChildren();
+    if (errorBox) { errorBox.hidden = true; errorBox.textContent = ''; }
+    $('guestQrId').textContent = id;
+    $('guestQrName').textContent = String(fullName || 'CMDI Client');
+
+    try {
+      // The QR payload is deliberately limited to the Guest ID. The existing
+      // Front Desk scanner parses plain TR-… Guest IDs directly.
+      new window.QRCode(codeBox, {
+        text: id,
+        width: 240,
+        height: 240,
+        colorDark: '#1b3a2e',
+        colorLight: '#ffffff',
+        correctLevel: window.QRCode.CorrectLevel.H
+      });
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      $('closeGuestQrBtn')?.focus();
+    } catch (error) {
+      console.error('[CMDI Client QR] Generation failed:', error);
+      if (errorBox) {
+        errorBox.textContent = 'Could not generate your QR code. Please refresh and try again.';
+        errorBox.hidden = false;
+      }
+    }
+  }
+
+  function setupClientQr(profile) {
+    const action = $('portalQrAction');
+    const button = $('showGuestQrBtn');
+    const help = $('guestQrAvailability');
+    if (!action || !button || !help || page !== 'profile') return;
+
+    action.hidden = false;
+    button.hidden = true;
+    const guestId = String(profile.guest_id || '').trim().toUpperCase();
+    const registrationStatus = String(profile.registration_status || '').trim().toLowerCase();
+    const accountStatus = String(profile.status || 'active').trim().toLowerCase();
+
+    if (['inactive', 'suspended'].includes(accountStatus)) {
+      help.textContent = 'Your QR code is unavailable while your client account is inactive. Please contact CMDI Front Desk.';
+      return;
+    }
+    if (registrationStatus !== 'verified') {
+      help.textContent = 'Your QR code will be available after your registration is verified.';
+      return;
+    }
+    if (!GUEST_ID_PATTERN.test(guestId)) {
+      help.textContent = 'Your Guest ID has not been assigned yet. Please contact CMDI Front Desk.';
+      return;
+    }
+
+    button.hidden = false;
+    help.textContent = 'Show this QR code to Front Desk. It contains your Guest ID only.';
+    button.addEventListener('click', () => openGuestQr(guestId, profile.full_name));
+  }
+
+  function bindGuestQrModal() {
+    $('closeGuestQrBtn')?.addEventListener('click', closeGuestQr);
+    $('guestQrModal')?.addEventListener('click', event => {
+      if (event.target === $('guestQrModal')) closeGuestQr();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeGuestQr();
+    });
+    $('downloadGuestQrBtn')?.addEventListener('click', () => {
+      const canvas = $('guestQrCode')?.querySelector('canvas');
+      const image = $('guestQrCode')?.querySelector('img');
+      const dataUrl = canvas?.toDataURL('image/png') || image?.src;
+      if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+        const errorBox = $('guestQrError');
+        if (errorBox) {
+          errorBox.textContent = 'The QR image is not ready yet. Close and reopen the QR code, then try again.';
+          errorBox.hidden = false;
+        }
+        return;
+      }
+      const guestId = $('guestQrId')?.textContent || 'CMDI-Guest';
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `CMDI-${guestId}-QR.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    });
+    $('printGuestQrBtn')?.addEventListener('click', () => {
+      document.body.classList.add('guest-qr-printing');
+      window.print();
+    });
+    window.addEventListener('afterprint', () => document.body.classList.remove('guest-qr-printing'));
+  }
+
+  // Backwards-compatible hook for the earlier profile.js version, which calls
+  // window.openQR(guest_id, full_name).
+  window.openQR = openGuestQr;
   function updatePage(profile,user) {
     const name = profile.full_name || user.email || 'Guest';
     const assignedRoom = profile.assigned_room || profile.room || null;
@@ -104,6 +230,7 @@
       el.hidden = !assignedRoom;
       if (assignedRoom) el.textContent = `Room ${assignedRoom} is recorded on your profile as your assigned room. Actual check-in/check-out timestamps are maintained by Front Desk.`;
     });
+    if (page === 'profile') setupClientQr(profile);
     if (isSuspended) showMessage('Your client account is currently inactive. Please contact CMDI Front Desk for assistance.');
     else if (reg !== 'verified') showMessage('Your registration has not been verified yet. Room selection will be available after verification.', 'info');
     const loaded = $('portalLoading'); if (loaded) loaded.hidden = true;
@@ -133,6 +260,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    bindGuestQrModal();
     $('portalLoading')?.classList.add('portal-loading');
     $('signOutBtn')?.addEventListener('click', async () => {
       const button = $('signOutBtn'); if (button) { button.disabled = true; button.textContent = 'Signing out…'; }

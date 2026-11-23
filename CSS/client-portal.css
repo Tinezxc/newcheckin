@@ -5,3 +5,34 @@
 @media(max-width:760px){.portal-shell{display:block;padding-bottom:76px}.portal-sidebar{position:fixed;z-index:20;left:0;right:0;bottom:0;top:auto;height:68px;padding:7px 10px;background:rgba(27,58,46,.97);backdrop-filter:blur(14px);display:block}.portal-brand,.portal-sidebar-foot{display:none}.portal-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.portal-nav a{padding:8px 2px;flex-direction:column;gap:3px;font-size:9px;border-radius:8px;text-align:center}.portal-nav .nav-icon{font-size:17px}.portal-main{padding:18px 15px 25px}.portal-topbar{margin-bottom:22px}.portal-user-chip span{display:none}.portal-hero{display:block}.portal-hero-actions{margin-top:16px}.portal-btn{flex:1}.portal-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.portal-card.span-8,.portal-card.span-7,.portal-card.span-6,.portal-card.span-5,.portal-card.span-4{grid-column:1/-1}.portal-room-display{padding:16px}.portal-room-display strong{font-size:29px}.portal-info-grid{gap:8px 14px}.portal-heading{font-size:30px}}
 @media(max-width:380px){.portal-kpis{grid-template-columns:1fr 1fr}.portal-card{padding:16px}.portal-top-actions{gap:6px}.portal-logout{padding:9px 10px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+
+/* ==========================================================
+   CLIENT GUEST QR — Profile page
+   ========================================================== */
+.portal-qr-action{display:grid;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.portal-qr-help{margin:0;color:var(--muted);font-size:11px;line-height:1.55}
+.guest-qr-modal[hidden]{display:none!important}
+.guest-qr-modal{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:rgba(12,29,21,.64);backdrop-filter:blur(5px);overflow-y:auto}
+.guest-qr-dialog{position:relative;width:min(100%,430px);max-height:calc(100vh - 40px);overflow:auto;background:#fff;border:1px solid var(--line);border-radius:22px;padding:28px 24px 24px;box-shadow:0 24px 70px rgba(0,0,0,.24);text-align:center}
+.guest-qr-dialog h2{margin:0;color:var(--green);font-family:'Playfair Display',Georgia,serif;font-size:25px;font-weight:600}
+.guest-qr-description{margin:9px 0 18px;color:var(--muted);font-size:12px;line-height:1.6}
+.guest-qr-close{position:absolute;right:13px;top:11px;width:36px;height:36px;border:0;border-radius:50%;background:#f1f4f1;color:var(--green);font-size:25px;line-height:1;cursor:pointer}
+.guest-qr-card{display:grid;justify-items:center;gap:9px;padding:19px 14px 17px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.guest-qr-code{width:260px;max-width:100%;min-height:240px;display:grid;place-items:center;padding:10px;background:#fff}
+.guest-qr-code canvas,.guest-qr-code img{display:block;width:240px!important;height:240px!important;max-width:100%;image-rendering:pixelated}
+.guest-qr-id{color:var(--green);font-size:16px;font-weight:800;letter-spacing:.06em}
+.guest-qr-name{color:var(--muted);font-size:12px}
+.guest-qr-privacy{margin:14px 2px;color:var(--muted);font-size:10px;line-height:1.6}
+.guest-qr-buttons{display:flex;gap:10px;margin-top:17px}
+.guest-qr-buttons .portal-btn{flex:1}
+.guest-qr-error{margin:12px 0 0;padding:10px 12px;border-radius:9px;background:#fff0ee;color:#8d3028;font-size:11px;line-height:1.5}
+body.guest-qr-printing .portal-shell,body.guest-qr-printing #portalLoading,body.guest-qr-printing #portalMessage{visibility:hidden!important}
+body.guest-qr-printing #guestQrModal,body.guest-qr-printing #guestQrModal *{visibility:visible!important}
+@media print{
+  body.guest-qr-printing{background:#fff!important}
+  body.guest-qr-printing #guestQrModal{position:absolute!important;inset:0!important;display:grid!important;padding:0!important;background:#fff!important;backdrop-filter:none!important;overflow:visible!important}
+  body.guest-qr-printing .guest-qr-dialog{width:100%!important;max-height:none!important;overflow:visible!important;border:0!important;box-shadow:none!important}
+  body.guest-qr-printing .guest-qr-close,body.guest-qr-printing .guest-qr-buttons{display:none!important}
+}
+@media(max-width:480px){.guest-qr-dialog{padding:25px 16px 18px}.guest-qr-buttons{flex-direction:column}.guest-qr-code{min-height:220px}.guest-qr-code canvas,.guest-qr-code img{width:220px!important;height:220px!important}}
