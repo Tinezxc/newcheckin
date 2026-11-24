@@ -1421,3 +1421,148 @@ body {
 }
 
 #bookingReviewText { white-space: pre-line; line-height: 1.65; }
+
+
+/* ==========================================================
+   CMDI STAFF DASHBOARD — FLOOR 2/3 + UI POLISH
+   Presentation only: preserves existing component IDs,
+   role gates, review actions, notification hooks and RPCs.
+   ========================================================== */
+.dashboard-content {
+    max-width: 1880px;
+    margin-inline: auto;
+    padding: clamp(16px, 2vw, 30px) clamp(14px, 2.1vw, 32px) 32px;
+    gap: clamp(14px, 1.35vw, 20px);
+}
+.dashboard-welcome {
+    min-height: 118px;
+    padding: clamp(18px, 2vw, 26px) clamp(18px, 2.2vw, 30px);
+    border-radius: 18px;
+    box-shadow: 0 8px 26px rgba(24, 61, 46, .055);
+}
+.dashboard-welcome h2 { letter-spacing: -.035em; }
+.kpi-row { gap: clamp(10px, 1.1vw, 16px); }
+.kpi-card {
+    min-width: 0;
+    min-height: 126px;
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(24, 61, 46, .05);
+}
+.kpi-card:focus-visible,
+.room-cell:focus-visible,
+.nav-item:focus-visible,
+.btn:focus-visible,
+button:focus-visible,
+a:focus-visible {
+    outline: 3px solid rgba(78, 128, 96, .42);
+    outline-offset: 2px;
+}
+.card { border-radius: 17px; }
+.card-header { gap: 14px; }
+.room-board-header { align-items: center; }
+.room-board-heading-copy { min-width: 160px; }
+.room-board-caption {
+    margin: 4px 0 0 15px;
+    color: var(--text-3, #839087);
+    font-size: 10px;
+    line-height: 1.35;
+}
+.room-legend { justify-content: flex-end; gap: 7px 12px; }
+.room-board {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 16px;
+    flex: none;
+}
+.room-floor {
+    min-width: 0;
+    margin: 0 !important;
+    padding: 15px;
+    border: 1px solid #e5ebe4;
+    border-radius: 15px;
+    background: linear-gradient(155deg, #fff 0%, #fbfdfb 100%);
+    box-shadow: 0 4px 14px rgba(24, 61, 46, .045);
+}
+.room-floor-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 13px;
+}
+.room-floor h4 {
+    margin: 0 !important;
+    color: #244a35;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .12em;
+}
+.room-floor h4::after { display: none; }
+.floor-room-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 9px;
+    border: 1px solid #e0e9e0;
+    border-radius: 999px;
+    background: #f2f7f2;
+    color: #54725b;
+    font-size: 9px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+.room-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+}
+.room-cell {
+    min-width: 0;
+    min-height: 76px;
+    padding: 9px 5px 11px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+.room-cell small {
+    max-width: 100%;
+    margin-top: 5px;
+    font-size: 9px;
+    line-height: 1.25;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+.room-floor-empty {
+    display: grid;
+    min-height: 94px;
+    place-items: center;
+    margin: 0;
+    padding: 18px;
+    border: 1px dashed #dce6dc;
+    border-radius: 11px;
+    background: #fafcf9;
+    color: #849187;
+    font-size: 11px;
+    text-align: center;
+}
+.group-booking-item { transition: background .15s ease; }
+.group-booking-item:hover { background: #fbfdfb; }
+.queue-table tbody tr { transition: background .15s ease; }
+
+@media (max-width: 1180px) {
+    .room-board { grid-template-columns: 1fr; }
+    .room-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+    .dashboard-content { padding: 14px 12px 22px; }
+    .room-board-header { align-items: flex-start; }
+    .room-legend { justify-content: flex-start; }
+    .room-board-caption { margin-left: 15px; }
+    .room-floor { padding: 12px; }
+    .room-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; }
+}
+@media (max-width: 420px) {
+    .room-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .room-cell { min-height: 70px; }
+    .room-board-caption { font-size: 9px; }
+}

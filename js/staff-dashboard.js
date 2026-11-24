@@ -44,6 +44,10 @@
         'cleaning', 'maintenance', 'reserved', 'overdue'
     ]);
 
+    // CMDI guest accommodation uses Floors 2 and 3 only.
+    // Keep this UI scope aligned with the active room inventory rules.
+    const VISIBLE_FLOORS = new Set([2, 3]);
+
     const state = {
         tab: 'arrivals',
         sortKey: null,
@@ -190,12 +194,18 @@
 
             rooms = {};
             (Array.isArray(data.rooms) ? data.rooms : []).forEach(room => {
-                const number = String(room.room_number ?? '');
+                const number = String(room.room_number ?? '').trim();
                 if (!number) return;
+
+                // Use the explicit floor field; fall back to the first room-number
+                // digit only for older rows whose floor field is empty.
+                const floor = Number(room.floor || number.charAt(0));
+                if (!VISIBLE_FLOORS.has(floor)) return;
+
                 rooms[number] = {
                     id: room.id,
                     number,
-                    floor: Number(room.floor || 0),
+                    floor,
                     type: room.type || 'Standard Shared Room',
                     capacity: Number(room.capacity || 0),
                     occupants: Number(room.assigned_count ?? room.occupants_count ?? 0),
@@ -216,26 +226,30 @@
                 }
             }
 
-            const roomRequests = reviewRows.map(item => ({
-                reviewId: item.review_id,
-                requestType: item.request_type,
-                guest: item.guest || 'Guest',
-                guestId: item.guest_id || '—',
-                profileId: item.profile_id || null,
-                groupBookingId: item.group_booking_id || null,
-                groupSize: Number(item.group_size || 1),
-                members: Array.isArray(item.members) ? item.members : [],
-                gender: item.gender || null,
-                room: String(item.room_number || '—'),
-                time: item.check_in ? formatDate(item.check_in) : formatDateTime(item.requested_at),
-                rawTime: item.check_in || item.requested_at || '',
-                requestedAt: item.requested_at || null,
-                status: item.status || 'pending'
-            }));
+            const roomRequests = reviewRows
+                .filter(item => rooms[String(item.room_number || '').trim()])
+                .map(item => ({
+                    reviewId: item.review_id,
+                    requestType: item.request_type,
+                    guest: item.guest || 'Guest',
+                    guestId: item.guest_id || '—',
+                    profileId: item.profile_id || null,
+                    groupBookingId: item.group_booking_id || null,
+                    groupSize: Number(item.group_size || 1),
+                    members: Array.isArray(item.members) ? item.members : [],
+                    gender: item.gender || null,
+                    room: String(item.room_number || '—'),
+                    time: item.check_in ? formatDate(item.check_in) : formatDateTime(item.requested_at),
+                    rawTime: item.check_in || item.requested_at || '',
+                    requestedAt: item.requested_at || null,
+                    status: item.status || 'pending'
+                }));
 
             const assignedGuests = (state.visibility.assigned_guests && Array.isArray(data.assigned_guests)
                 ? data.assigned_guests
-                : []).map(item => ({
+                : [])
+                .filter(item => rooms[String(item.room_number || '').trim()])
+                .map(item => ({
                     guest: item.guest || 'Guest details restricted',
                     guestId: item.guest_id || '—',
                     profileId: item.profile_id || null,
@@ -252,7 +266,7 @@
             };
 
             groups = state.visibility.group_bookings && Array.isArray(data.group_bookings)
-                ? data.group_bookings
+                ? data.group_bookings.filter(group => rooms[String(group.room_number || '').trim()])
                 : [];
 
             const generalRequests = (state.visibility.guest_requests && Array.isArray(data.requests) ? data.requests : []).map(item => ({
@@ -419,15 +433,11 @@
        KPI STRIP
        ========================================================== */
     function renderKpis() {
-        const metrics = state.summary || {};
-        const roomList = Object.values(rooms);
-        const totalBedsFallback = roomList.reduce((sum, room) => sum + room.capacity, 0);
-        const allocatedBedsFallback = roomList.reduce((sum, room) => sum + Math.min(room.occupants, room.capacity || room.occupants), 0);
-        const totalBeds = Number.isFinite(Number(metrics.total_beds)) ? Number(metrics.total_beds) : totalBedsFallback;
-        const allocatedBeds = Number.isFinite(Number(metrics.allocated_beds)) ? Number(metrics.allocated_beds) : allocatedBedsFallback;
-        const allocationPercent = Number.isFinite(Number(metrics.allocation_percent))
-            ? Number(metrics.allocation_percent)
-            : (totalBeds > 0 ? Math.round(allocatedBeds / totalBeds * 100) : 0);
+        // Occupancy is calculated from the visible guest floors only (2 and 3).
+        const roomList = Object.values(rooms).filter(room => VISIBLE_FLOORS.has(room.floor));
+        const totalBeds = roomList.reduce((sum, room) => sum + room.capacity, 0);
+        const allocatedBeds = roomList.reduce((sum, room) => sum + Math.min(room.occupants, room.capacity || room.occupants), 0);
+        const allocationPercent = totalBeds > 0 ? Math.round(allocatedBeds / totalBeds * 100) : 0;
         const openRequests = requests.filter(item => !['completed', 'cancelled', 'closed', 'resolved', 'rejected'].includes(String(item.status).toLowerCase()));
 
         const allCard = $('.kpi-card[data-filter="all"]');
@@ -518,11 +528,13 @@
             const members = Array.isArray(group.members) ? group.members : [];
             const accepted = members.filter(member => ['accepted', 'confirmed', 'completed'].includes(String(member.status).toLowerCase())).length;
             const status = String(group.status || 'inviting').toLowerCase();
+            const groupRoom = rooms[String(group.room_number || '').trim()];
+            const groupFloor = groupRoom?.floor || Number(group.floor || 0);
             return `<li class="group-booking-item">
                 <div class="group-booking-top">
                     <div>
                         <strong>${esc(group.group_name || 'CMDI Group')}</strong>
-                        <span>Room ${esc(group.room_number || '—')} · Floor ${esc(group.floor ?? '—')}</span>
+                        <span>Room ${esc(group.room_number || '—')} · Floor ${esc(groupFloor)}</span>
                     </div>
                     <span class="status-pill ${status === 'confirmed' ? 'checked-in' : 'pending'}"><span class="dot"></span>${esc(statusLabel(status))}</span>
                 </div>
@@ -537,23 +549,34 @@
        ROOM BOARD AND DETAILS DRAWER
        ========================================================== */
     function renderRooms() {
-        const all = Object.values(rooms);
+        const all = Object.values(rooms)
+            .filter(room => VISIBLE_FLOORS.has(room.floor))
+            .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
         const board = $('#roomBoard');
-        if (!all.length) {
-            board.innerHTML = '<div class="empty-state"><p class="empty-title">No rooms to show</p><p class="empty-sub">The rooms table currently has no records.</p></div>';
-            return;
-        }
+        if (!board) return;
 
-        const floors = [...new Set(all.map(room => room.floor))].sort((a, b) => a - b);
         let html = '';
-        floors.forEach(floor => {
-            html += `<div class="room-floor"><h4>Floor ${floor}</h4><div class="room-grid">`;
-            all.filter(room => room.floor === floor).forEach(room => {
-                const status = ROOM_STATUSES.has(room.status) ? room.status : 'vacant-dirty';
-                html += `<button type="button" class="room-cell st-${status}" data-room="${esc(room.number)}" aria-label="Room ${esc(room.number)}, ${esc(statusLabel(status))}">${esc(room.number)}<small>${esc(statusLabel(status))} · ${room.occupants}/${room.capacity} beds allocated</small></button>`;
-            });
-            html += '</div></div>';
+        [2, 3].forEach(floor => {
+            const floorRooms = all.filter(room => room.floor === floor);
+            html += `<section class="room-floor" aria-label="Rooms on Floor ${floor}">
+                <div class="room-floor-top">
+                    <h4>Floor ${floor}</h4>
+                    <span class="floor-room-count">${floorRooms.length} ${floorRooms.length === 1 ? 'room' : 'rooms'}</span>
+                </div>`;
+
+            if (!floorRooms.length) {
+                html += '<p class="room-floor-empty">No active rooms on this floor.</p>';
+            } else {
+                html += '<div class="room-grid">';
+                floorRooms.forEach(room => {
+                    const status = ROOM_STATUSES.has(room.status) ? room.status : 'vacant-dirty';
+                    html += `<button type="button" class="room-cell st-${status}" data-room="${esc(room.number)}" aria-label="Room ${esc(room.number)}, ${esc(statusLabel(status))}">${esc(room.number)}<small>${esc(statusLabel(status))} · ${room.occupants}/${room.capacity} beds</small></button>`;
+                });
+                html += '</div>';
+            }
+            html += '</section>';
         });
+
         board.innerHTML = html;
     }
 
