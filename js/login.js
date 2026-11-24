@@ -36,12 +36,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function friendlyAuthError(err) {
         const msg = String((err && err.message) || '').toLowerCase();
-        if (msg.includes('invalid login')) return 'Incorrect email or password.';
-        if (msg.includes('banned') || msg.includes('suspended')) return 'This account has been suspended. Please contact an administrator.';
-        if (msg.includes('not confirmed')) return 'Please verify your email first. Check your inbox for the 6-digit code.';
-        if (msg.includes('rate') || msg.includes('too many')) return 'Too many attempts. Please wait a minute and try again.';
-        if (msg.includes('network') || msg.includes('fetch')) return 'Could not reach the server. Check your connection and try again.';
-        // Anything unexpected: say so (instead of blaming the password) and show the real reason
+        const code = String((err && err.code) || '').toLowerCase();
+        if (code === 'invalid_credentials' || msg.includes('invalid login')) {
+            return 'Incorrect email or password.';
+        }
+        if (code === 'email_not_confirmed' || msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+            return 'Please verify your email first. Open the 6-digit code sent during registration.';
+        }
+        if (msg.includes('banned') || msg.includes('suspended')) {
+            return 'This account has been suspended. Please contact an administrator.';
+        }
+        if (msg.includes('rate') || msg.includes('too many')) {
+            return 'Too many attempts. Please wait a minute and try again.';
+        }
+        if (msg.includes('network') || msg.includes('fetch')) {
+            return 'Could not reach the server. Check your connection and try again.';
+        }
         return 'Could not sign in' + (err && err.message ? ' (' + err.message + ')' : '') + '. Please try again.';
     }
 
@@ -139,27 +149,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /* ==========================================
-       SIGN IN LOGIC: PASSWORD -> EMAIL OTP
-       The Edge Function validates the password first and sends the OTP.
-       No browser session is created until the OTP is verified.
+       SIGN IN LOGIC: EMAIL + PASSWORD ONLY
+       Registration email OTP is handled separately by verify-otp.js.
+       A normal login does not send or require another OTP.
        ========================================== */
-    const LOGIN_CHALLENGE_KEY = 'haven_login_challenge';
-    const LOGIN_EMAIL_KEY = 'haven_login_email_masked';
-    const LOGIN_NEXT_KEY = 'haven_login_next';
-
-    function loginStartMessage(code) {
-        const messages = {
-            invalid_credentials: 'Incorrect email or password.',
-            email_not_confirmed: 'This email is not verified yet. Please contact the administrator.',
-            email_rate_limited: 'Too many OTP emails were requested. Please wait a few minutes.',
-            too_many_sends: 'You have requested too many OTP codes. Please try again later.',
-            send_failed: 'We could not send the verification code. Please try again.',
-            network: 'Could not reach the server. Check your connection and try again.',
-            account_unavailable: 'This account cannot sign in right now. Please contact the administrator.'
-        };
-        return messages[code] || 'Could not start secure sign-in. Please try again.';
-    }
-
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();
         hideAlert();
@@ -176,10 +169,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const label = loginBtn.querySelector('.btn-label');
-        const spinner = loginBtn.querySelector('.btn-spinner');
+        const label = loginBtn?.querySelector('.btn-label');
+        const spinner = loginBtn?.querySelector('.btn-spinner');
         const setLoading = (on) => {
-            loginBtn.disabled = on;
+            if (loginBtn) loginBtn.disabled = on;
             if (label) label.hidden = on;
             if (spinner) spinner.hidden = !on;
         };
@@ -188,41 +181,64 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const email = idInput.value.trim().toLowerCase();
             const password = pwInput.value;
+            const supabase = window.supabaseClient;
 
-            const { data, error } = await window.supabaseClient.functions.invoke('dynamic-responder', {
-                body: { action: 'start_login', email, password }
+            // Supabase rejects unconfirmed email accounts here. Once the client has
+            // completed the registration OTP, future logins use password only.
+            const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+                email,
+                password
             });
 
-            if (error) {
+            if (authError) {
                 registerFailure();
-                console.error('Start login OTP error:', error);
-                showAlert(friendlyAuthError(error));
+                console.error('Password sign-in error:', authError);
+                showAlert(friendlyAuthError(authError));
                 shake();
                 return;
             }
-            if (!data || !data.ok) {
-                if (data && data.code === 'invalid_credentials') registerFailure();
-                showAlert(loginStartMessage(data && data.code));
-                shake();
-                return;
-            }
-            if (!data.challenge_id) {
-                showAlert('The server did not return a verification challenge. Please try again.');
+
+            const user = authData?.user;
+            if (!user?.id) {
+                await supabase.auth.signOut();
+                showAlert('Sign-in completed, but the account session could not be confirmed. Please try again.');
                 return;
             }
 
-            // Clear an abandoned registration-link flow so it cannot take priority on the OTP page.
-            sessionStorage.removeItem('haven_reg_token');
-            sessionStorage.removeItem('haven_need_password');
+            // Read the account's actual role and status after authentication.
+            const { data: profile, error: profileError } = await supabase
+                .from('profiles')
+                .select('role,status')
+                .eq('id', user.id)
+                .maybeSingle();
 
-            // Only the short-lived challenge ID and masked email are saved.
-            // The password is not placed in sessionStorage or the URL.
-            sessionStorage.setItem(LOGIN_CHALLENGE_KEY, data.challenge_id);
-            sessionStorage.setItem(LOGIN_EMAIL_KEY, email);
-            sessionStorage.setItem(LOGIN_NEXT_KEY, safeNextPage() || '');
-            window.location.href = 'verify-otp.html?flow=login';
+            if (profileError || !profile) {
+                console.error('Login profile lookup error:', profileError);
+                await supabase.auth.signOut();
+                showAlert('We could not load your CMDI account. Please contact CMDI staff.');
+                return;
+            }
+
+            const accountStatus = String(profile.status || 'active').toLowerCase().trim();
+            if (['inactive', 'suspended'].includes(accountStatus)) {
+                await supabase.auth.signOut();
+                showAlert('This account is currently inactive or suspended. Please contact CMDI staff.');
+                return;
+            }
+
+            const role = String(profile.role || 'client').toLowerCase().trim();
+            cacheRole(user.id, role);
+            failedTries = 0;
+
+            // Remove any abandoned login OTP challenge left by an older version.
+            sessionStorage.removeItem('haven_login_challenge');
+            sessionStorage.removeItem('haven_login_email_masked');
+            sessionStorage.removeItem('haven_login_next');
+
+            // Keep the existing role-based routing and safe staff-page redirect.
+            window.location.replace(getDestination(role));
         } catch (err) {
-            console.error('Login OTP error:', err);
+            console.error('Password sign-in error:', err);
             showAlert(friendlyAuthError(err));
             shake();
         } finally {

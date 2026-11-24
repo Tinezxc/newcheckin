@@ -3,20 +3,16 @@
    CMDI / HAVEN - COMBINED OTP VERIFICATION
 
    REGISTRATION:
-   Google Form
-   -> Registration Link
-   -> Lookup
-   -> Send OTP
-   -> Verify OTP
-   -> Create Password
+   Google Form token flow (unchanged)
+   OR
+   Direct System Registration
+   -> Supabase Email OTP
+   -> Confirm Email + Finalize Client Registration
    -> Login Page
 
    LOGIN:
    Email + Password
-   -> Login OTP
-   -> Verify Login OTP
-   -> Authenticated Session
-   -> Correct Dashboard
+   -> Correct Dashboard (no login OTP)
    ========================================================== */
 
 (function () {
@@ -550,9 +546,26 @@
         state.busy = true;
 
         try {
-            const result = state.mode === 'login'
-                ? await callLogin('resend_login_otp')
-                : await callRegistration('send_otp');
+            let result;
+
+            if (state.mode === 'login') {
+                result = await callLogin('resend_login_otp');
+
+            } else if (state.mode === 'legacy') {
+                // Direct system registration uses Supabase Auth sign-up OTP,
+                // not the Google Forms registration Edge Function.
+                const { error } = await db.auth.resend({
+                    type: 'signup',
+                    email: state.legacyEmail
+                });
+
+                if (error) throw error;
+                result = { ok: true, retry_after: 60 };
+
+            } else {
+                // Preserve the existing Google Forms/token-based flow.
+                result = await callRegistration('send_otp');
+            }
 
             if (!result || !result.ok) {
 
@@ -1008,6 +1021,53 @@
     }
 
     /* ==========================================================
+       FINALIZE DIRECT SYSTEM REGISTRATION
+
+       This runs only for the legacy Supabase sign-up flow used by
+       register.html. The Google Forms/token-based flow is unchanged.
+       ========================================================== */
+
+    async function finishLegacyRegistration() {
+        // The SQL function verifies auth.uid() and email_confirmed_at, then
+        // changes only this client's pending profiles.registration_status.
+        const { error: profileError } = await db.rpc(
+            'mark_my_client_registration_verified'
+        );
+
+        if (profileError) {
+            console.error('Direct registration profile update error:', profileError);
+            throw new Error(
+                'Your email is verified, but your CMDI registration could not be finalized. ' +
+                'Please contact CMDI staff to check the direct-registration database setup.'
+            );
+        }
+
+        sessionStorage.removeItem(LEGACY_EMAIL_KEY);
+
+        // Sign out so the client can use normal email + password login (no login OTP).
+        const { error: signOutError } = await db.auth.signOut();
+        if (signOutError) {
+            console.warn('Could not sign out after direct registration:', signOutError);
+        }
+
+        state.verified = true;
+        state.redirectTo = 'index.html';
+
+        setText('successTitle', 'Email and registration verified');
+        setText(
+            'successText',
+            'Your email and CMDI registration have been verified. You can now log in.'
+        );
+
+        if ($('continueBtn')) {
+            $('continueBtn').textContent = 'Go to Login';
+        }
+
+        showStep('stepSuccess');
+        return true;
+    }
+
+    /* ==========================================================
        VERIFY LEGACY SIGN-UP OTP
        ========================================================== */
 
@@ -1021,30 +1081,19 @@
 
             if (error) throw error;
 
-            sessionStorage.removeItem(LEGACY_EMAIL_KEY);
-
-            state.verified = true;
-            state.redirectTo = 'index.html';
-
-            setText('successTitle', 'Email verified');
-
-            setText(
-                'successText',
-                'Your email has been verified. You can now log in.'
-            );
-
-            showStep('stepSuccess');
-
-            return true;
-
         } catch (error) {
             console.error('Legacy OTP error:', error);
+            showError('otpError', 'Invalid or expired verification code.');
+            return false;
+        }
 
-            showError(
-                'otpError',
-                'Invalid or expired verification code.'
-            );
-
+        // OTP has already confirmed the email. If database finalization fails,
+        // the signed-in session is retained so refreshing after the SQL setup
+        // can retry finalization without asking for another OTP.
+        try {
+            return await finishLegacyRegistration();
+        } catch (error) {
+            showError('otpError', error.message || 'Could not finalize your registration.');
             return false;
         }
     }
@@ -1183,7 +1232,7 @@
             if (updateError) throw updateError;
 
             // Registration is complete.
-            // Sign out so the client must use normal Login + Login OTP.
+            // Sign out so the client must use normal email + password login (no login OTP).
             const { error: signOutError } = await db.auth.signOut();
 
             if (signOutError) {
@@ -1250,18 +1299,43 @@
        LEGACY REGISTRATION
        ========================================================== */
 
-    function startLegacyFlow(email) {
+    async function startLegacyFlow(email) {
         state.mode = 'legacy';
         state.legacyEmail = email;
+
+        // If OTP verification succeeded earlier but the profile update failed,
+        // retry the finalization from the still-authenticated confirmed session.
+        const { data: userData, error: userError } = await db.auth.getUser();
+        const currentUser = userData?.user;
+        if (
+            !userError &&
+            currentUser?.email_confirmed_at &&
+            String(currentUser.email || '').toLowerCase() === String(email || '').toLowerCase()
+        ) {
+            showStep('stepChecking');
+            try {
+                await finishLegacyRegistration();
+            } catch (error) {
+                console.error('Direct registration retry failed:', error);
+                setText('invalidTitle', 'Registration setup needs attention');
+                setText(
+                    'invalidText',
+                    error.message || 'Your email is verified, but CMDI could not finalize your registration. Please contact CMDI staff.'
+                );
+                showStep('stepInvalid');
+            }
+            return;
+        }
 
         setText('otpTitle', 'Verify your email');
         setText('otpInfo', 'Enter the 6-digit code sent to your email.');
         setText('displayEmail', email);
 
-        $('resendRow')?.classList.add('hidden');
+        $('resendRow')?.classList.remove('hidden');
 
         showStep('stepInput');
         clearBoxes();
+        startCooldown(60);
     }
 
     /* ==========================================================
@@ -1308,23 +1382,27 @@
             return;
         }
 
-        // PRIORITY 2: Login OTP.
+        // Older login-OTP links are retired. All normal logins now happen
+        // directly on index.html with email + password.
         const flow = new URLSearchParams(
             window.location.search
         ).get('flow');
 
         if (flow === 'login') {
-            startLoginFlow();
+            sessionStorage.removeItem(LOGIN_CHALLENGE_KEY);
+            sessionStorage.removeItem(LOGIN_EMAIL_KEY);
+            sessionStorage.removeItem(LOGIN_NEXT_KEY);
+            window.location.replace('index.html');
             return;
         }
 
-        // PRIORITY 3: Existing sign-up flow.
+        // PRIORITY 2: Existing direct system sign-up flow.
         const legacyEmail = sessionStorage.getItem(
             LEGACY_EMAIL_KEY
         );
 
         if (legacyEmail) {
-            startLegacyFlow(legacyEmail);
+            await startLegacyFlow(legacyEmail);
             return;
         }
 
