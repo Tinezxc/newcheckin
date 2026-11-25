@@ -2,8 +2,27 @@
 // Deploy with Supabase CLI. SUPABASE_SERVICE_ROLE_KEY stays server-side only.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+<<<<<<< HEAD
+function getDefaultKey(dictionaryName: string, legacyName: string): string | null {
+  const raw = Deno.env.get(dictionaryName);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const value = parsed.default;
+      if (typeof value === 'string' && value.length > 0) return value;
+    } catch (error) {
+      console.error(`[CMDI staff-provision] Could not parse ${dictionaryName}:`, error);
+    }
+  }
+  return Deno.env.get(legacyName) || null;
+}
+
+const allowedOrigins = (Deno.env.get('CMDI_ALLOWED_ORIGINS')
+  ?? 'https://newcheckin-rose.vercel.app')
+=======
 const allowedOrigins = (Deno.env.get('CMDI_ALLOWED_ORIGINS')
   ?? 'https://cmdi-hotel-check-in.vercel.app')
+>>>>>>> 4b37ebf4172cb3faf9aeee4c3fb66af9e7f38305
   .split(',').map((value) => value.trim()).filter(Boolean);
 
 function corsFor(origin: string | null): Record<string, string> | null {
@@ -30,8 +49,14 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(405, { error: 'Method not allowed.' }, corsHeaders);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
+<<<<<<< HEAD
+  // Current Supabase projects expose key dictionaries; retain legacy fallbacks.
+  const anonKey = getDefaultKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY');
+  const serviceRoleKey = getDefaultKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY');
+=======
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+>>>>>>> 4b37ebf4172cb3faf9aeee4c3fb66af9e7f38305
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return json(500, { error: 'Staff provisioning is not configured on the server.' }, corsHeaders);
   }
@@ -83,7 +108,11 @@ Deno.serve(async (req) => {
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(400, { error: 'Enter a valid staff email address.' }, corsHeaders);
     if (!allowedRoles.has(role)) return json(400, { error: 'Invalid staff role.' }, corsHeaders);
 
+<<<<<<< HEAD
+    const redirectTo = Deno.env.get('CMDI_STAFF_INVITE_REDIRECT_URL') ?? 'https://newcheckin-rose.vercel.app/index.html';
+=======
     const redirectTo = Deno.env.get('CMDI_STAFF_INVITE_REDIRECT_URL') ?? 'https://cmdi-hotel-check-in.vercel.app/index.html';
+>>>>>>> 4b37ebf4172cb3faf9aeee4c3fb66af9e7f38305
     const { data: inviteResult, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName, role },
       redirectTo,

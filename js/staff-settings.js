@@ -93,7 +93,39 @@ document.addEventListener('DOMContentLoaded', async () => {
       UI.toast('success','Invitation sent',`An invitation was created for ${email}.`);
       await loadAccounts();
     } catch(error) {
+<<<<<<< HEAD
+      // Supabase FunctionsHttpError contains the Edge Function's JSON response
+      // in error.context. Read it so the Manager sees the actual server reason
+      // instead of only the generic non-2xx message.
+      let detail = error?.message || 'The staff invitation request failed.';
+      let status = null;
+      const response = error?.context;
+
+      if (response && typeof response.clone === 'function') {
+        status = response.status || null;
+        try {
+          const body = await response.clone().json();
+          if (body && typeof body === 'object') {
+            detail = String(body.error || body.message || JSON.stringify(body));
+          }
+        } catch (_) {
+          try {
+            const text = await response.clone().text();
+            if (text) detail = text;
+          } catch (_) { /* keep the SDK message */ }
+        }
+      }
+
+      const message = `${status ? `HTTP ${status}: ` : ''}${detail}`;
+      console.error('[CMDI Staff Settings] staff-provision failed:', {
+        status,
+        message: detail,
+        errorName: error?.name || 'UnknownError'
+      });
+      UI.toast('error','Could not invite staff',message);
+=======
       UI.toast('error','Could not invite staff',`${error.message}. Confirm that the staff-provision Edge Function is deployed and its secrets are set.`);
+>>>>>>> 4b37ebf4172cb3faf9aeee4c3fb66af9e7f38305
     } finally { UI.setBusy(btn,false); }
   });
 
