@@ -1,8 +1,0 @@
-/* CMDI mini-capstone Admin clean-up overrides */
-.admin-scope-note{margin:-10px 0 18px;color:var(--text-muted,#758078);font-size:.78rem;line-height:1.5}
-/* These areas are intentionally hidden because they are demo-only or not connected to CMDI data. */
-.tabs .tab[data-tab="permissions"],.tabs .tab[data-tab="requests"],.tab-panel[data-panel="permissions"],.tab-panel[data-panel="requests"]{display:none!important}
-.drawer-tabs .drawer-tab[data-dtab="access"],.drawer-tabs .drawer-tab[data-dtab="activity"],.drawer-panel[data-panel="access"],.drawer-panel[data-panel="activity"]{display:none!important}
-#bulkRemind,#signOutAllBtn,#elevApply,#sessionList{display:none!important}
-/* Keep only the supplied real account details and security controls visible. */
-#userDrawer .drawer-panel[data-panel="security"] .drawer-section:has(#sessionList){display:none!important}

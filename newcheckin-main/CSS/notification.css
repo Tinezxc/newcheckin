@@ -1,9 +1,0 @@
-/* Append to the existing CSS/notification.css. */
-.notif-menu-list li[data-notification-id] { cursor: pointer; }
-.notif-menu-list li[data-notification-id]:focus-visible {
-    outline: 2px solid var(--green-accent, #4b7c5c);
-    outline-offset: -2px;
-}
-.notif-menu-list .notif-content { min-width: 0; }
-.notif-menu-list .notif-content p { overflow-wrap: anywhere; }
-.notif-menu-header .link-muted:disabled { opacity: .45; cursor: not-allowed; }
