@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin Dashboard | CMDI Hotel Check-In</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="CSS/admin-dashboard.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><div class="brand-mark">C</div><div><strong>CMDI</strong><span>ADMIN CONSOLE</span></div></div>
+      <nav class="side-nav" aria-label="Admin navigation">
+        <p class="nav-label">ADMIN</p>
+        <a class="nav-link active" href="admin-dashboard.html" aria-current="page"><span class="nav-icon">▦</span>Dashboard</a>
+        <a class="nav-link" href="admin-users.html"><span class="nav-icon">♙</span>User Management</a>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="user-chip"><div class="avatar" id="sidebarAvatar">AD</div><div><strong id="sidebarName">Administrator</strong><span id="sidebarRole">Admin</span></div></div>
+        <button class="signout" id="signOutBtn" type="button">↪ Sign out</button>
+      </div>
+    </aside>
+
+    <div class="mobile-bar">
+      <button id="menuToggle" class="menu-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+      <strong>CMDI Admin</strong>
+      <span class="mobile-avatar" id="mobileAvatar">AD</span>
+    </div>
+    <div class="scrim" id="scrim"></div>
+
+    <main class="main-content">
+      <header class="page-top">
+        <div><p class="eyebrow">CMDI HOTEL CHECK-IN SYSTEM</p><h1>Admin Dashboard</h1><p class="subtitle">Account overview and administration</p></div>
+        <div class="top-actions"><span class="live-chip"><i></i> Account overview</span><button class="refresh-btn" id="refreshBtn" type="button">↻ Refresh data</button></div>
+      </header>
+
+      <div class="notice" id="pageNotice" role="status" hidden></div>
+      <section class="loading-panel" id="loadingPanel"><span class="spinner"></span><p>Checking administrator access and loading account data…</p></section>
+
+      <div id="dashboardContent" hidden>
+        <section class="welcome-row"><div><h2>Welcome, <span id="welcomeName">Administrator</span></h2><p>Here is the latest account information available to your administrator role.</p></div><a class="primary-link" href="admin-users.html">Manage users <span>→</span></a></section>
+
+        <section class="stats-grid" aria-label="Account summary">
+          <article class="stat-card"><span class="stat-label">Total accounts</span><strong id="totalAccounts">—</strong><span class="stat-foot">All profiles returned by Admin RPC</span></article>
+          <article class="stat-card"><span class="stat-label">Clients</span><strong id="clientAccounts">—</strong><span class="stat-foot">Client portal accounts</span></article>
+          <article class="stat-card"><span class="stat-label">Staff accounts</span><strong id="staffAccounts">—</strong><span class="stat-foot">Front desk, housekeeping, maintenance and manager</span></article>
+          <article class="stat-card"><span class="stat-label">Admin accounts</span><strong id="adminAccounts">—</strong><span class="stat-foot">Super Admin and Support Admin</span></article>
+          <article class="stat-card"><span class="stat-label">Active accounts</span><strong id="activeAccounts">—</strong><span class="stat-foot">Status marked active</span></article>
+          <article class="stat-card"><span class="stat-label">Suspended / invited</span><strong id="otherAccounts">—</strong><span class="stat-foot">Non-active account statuses</span></article>
+        </section>
+
+        <section class="content-grid">
+          <article class="panel users-panel">
+            <div class="panel-heading"><div><h3>Accounts</h3><p>Account list supplied by the Admin RPC</p></div><a href="admin-users.html">View all →</a></div>
+            <div class="table-wrap"><table><thead><tr><th>Account</th><th>Role</th><th>Status</th><th>Last active</th></tr></thead><tbody id="accountsBody"><tr><td colspan="4" class="table-message">Loading accounts…</td></tr></tbody></table></div>
+          </article>
+          <article class="panel activity-panel">
+            <div class="panel-heading"><div><h3>Recent role changes</h3><p>Latest entries in role history</p></div></div>
+            <ul class="activity-list" id="roleHistoryList"><li class="table-message">Loading history…</li></ul>
+          </article>
+        </section>
+
+        <p class="data-note">This dashboard shows account data only. Room occupancy, booking approvals and check-in operations remain in the Staff / Manager modules.</p>
+      </div>
+      <footer class="page-footer">CMDI Hotel Check-In System · Admin Console</footer>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/admin-dashboard.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guests | CMDI Hotel</title>
+<link rel="stylesheet" href="CSS/cmdi-modules.css">
+</head>
+<body>
+<div class="cmdi-layout">
+  <header class="mobile-topbar"><button class="menu-toggle" id="menuToggle" aria-label="Open navigation">☰</button><span class="mobile-brand">CMDI HOTEL</span><span class="topbar-avatar">ST</span></header>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo"><div class="logo-box">C</div><div class="logo-text"><span class="logo-title">CMDI</span><span class="logo-subtitle">HOTEL OPERATIONS</span></div></div>
+    <div class="role-switcher"><span class="role-label">ASSIGNED ROLE</span><div class="role-select-wrap is-locked"><span id="assignedRoleValue" class="assigned-role-value">Verifying…</span><span class="role-lock-icon">🔒</span></div><small class="role-lock-note">Managed by CMDI</small></div>
+    <nav class="sidebar-nav" aria-label="Main navigation"><span class="nav-section-title">OPERATIONS</span></nav>
+    <div class="sidebar-footer"><div class="staff-chip"><div class="staff-avatar">ST</div><div class="staff-info"><span class="staff-name">Staff</span><span class="staff-role" id="staffRoleLabel">Verifying…</span></div></div><a class="nav-item logout" href="index.html">Sign out</a></div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <main class="main-content">
+    <header class="topbar"><div class="topbar-title"><h1>Guest Directory</h1><p>Client profiles and registration information · <span id="roleBreadcrumb">Verifying role…</span></p></div>
+      <div class="topbar-actions"><div class="topbar-icon-wrap"><button class="icon-btn" id="notifBtn" type="button" aria-label="Notifications">♢<span class="icon-badge" hidden>0</span></button><div class="notif-menu" id="notifMenu" hidden><div class="notif-menu-header"><strong>Notifications</strong><button class="link-muted" type="button">Mark all read</button></div><ul class="notif-menu-list"></ul></div></div><span class="topbar-avatar">ST</span></div>
+    </header>
+    <section class="dashboard-content">
+      <div class="page-header"><div><h2 class="page-title">Guests</h2><p class="page-subtitle">Live records from Supabase · profiles</p></div><div class="page-actions"><button class="btn btn-secondary" id="refreshGuests">↻ Refresh</button><button class="btn btn-primary" id="exportGuests">↓ Export CSV</button></div></div>
+      <div class="stats-grid"><article class="stat-card"><div class="stat-label">Client profiles</div><div class="stat-value" id="guestTotal">—</div><div class="stat-note">All client accounts</div></article><article class="stat-card"><div class="stat-label">Room assigned</div><div class="stat-value" id="guestAssigned">—</div><div class="stat-note">Assigned or currently accommodated</div></article><article class="stat-card"><div class="stat-label">No room assigned</div><div class="stat-value" id="guestUnassigned">—</div><div class="stat-note">Awaiting accommodation</div></article><article class="stat-card"><div class="stat-label">Verified registration</div><div class="stat-value" id="guestVerified">—</div><div class="stat-note">Registration status = verified</div></article></div>
+      <div class="search-row"><div class="search-input"><input id="guestSearch" type="search" placeholder="Search name, Guest ID, Registration ID, institution or email…"></div><select class="field" id="guestStatusFilter" style="width:auto;min-width:155px"><option value="all">All profile statuses</option><option value="active">Active</option><option value="suspended">Suspended</option></select><select class="field" id="guestRoomFilter" style="width:auto;min-width:145px"><option value="all">All room states</option><option value="assigned">Room assigned</option><option value="unassigned">No room</option></select><button class="btn btn-secondary" id="clearGuestFilters">Clear</button></div>
+      <section class="panel"><div class="panel-head"><div><h2>Client guest profiles</h2><p>Viewing is available to Manager and Front Desk only.</p></div><span id="guestResultCount" class="secondary-text">Loading…</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Guest</th><th>Guest ID</th><th>Registration</th><th>Institution / Branch</th><th>Room</th><th>Check-in date</th><th>Registration</th><th>Profile</th><th>Action</th></tr></thead><tbody id="guestRows"><tr><td colspan="9" class="loading-state">Loading live guest profiles…</td></tr></tbody></table></div><div class="table-footer"><span id="guestFooter">Supabase · public.profiles</span><span id="guestPageCount">—</span></div></section>
+    </section>
+  </main>
+</div>
+<div class="cmdi-modal" id="guestEditModal" hidden><div class="cmdi-modal-card"><div class="modal-head"><h3>Edit guest profile</h3><button class="modal-close" data-close="guestEditModal">×</button></div><form id="guestEditForm"><div class="modal-body"><input type="hidden" id="editGuestId"><div class="form-field full"><label class="field-label" for="editGuestName">Full name</label><input class="field" id="editGuestName" maxlength="160" required></div><div class="form-grid"><div class="form-field"><label class="field-label" for="editGuestPhone">Contact number</label><input class="field" id="editGuestPhone" maxlength="40"></div><div class="form-field"><label class="field-label" for="editGuestInstitution">Institution</label><input class="field" id="editGuestInstitution" maxlength="160"></div><div class="form-field full"><label class="field-label" for="editGuestBranch">Branch</label><input class="field" id="editGuestBranch" maxlength="160"></div></div><div class="notice">Room assignment, account role, and registration status are managed by their respective workflows and cannot be edited here.</div></div><div class="modal-foot"><button class="btn btn-secondary" type="button" data-close="guestEditModal">Cancel</button><button class="btn btn-primary" id="saveGuestBtn" type="submit">Save profile</button></div></form></div></div>
+<div class="cmdi-toast-stack" id="toastContainer" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="js/supabase-client.js"></script><script src="js/staff-core.js" defer></script><script src="js/rbac.js" defer></script><script src="js/cmdi-module-common.js" defer></script><script src="js/staff-guests.js" defer></script><script src="js/notification.js" defer></script>
+</body></html>

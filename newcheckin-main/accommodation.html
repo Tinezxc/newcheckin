@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1b3a2e">
+  <title>CMDI Hotel Check-In | Accommodation</title>
+  <link rel="stylesheet" href="CSS/client-portal.css">
+</head>
+<body data-client-page="accommodation">
+  <div class="portal-shell">
+    <aside class="portal-sidebar">
+      <a class="portal-brand" href="client-dashboard.html"><span class="portal-brand-mark">C</span><span><strong>CMDI</strong><small>HOTEL CHECK-IN</small></span></a>
+      <nav class="portal-nav" aria-label="Client navigation">
+        <a class="" href="client-dashboard.html"><span class="nav-icon">⌂</span>Overview</a>
+        <a class="active" href="accommodation.html"><span class="nav-icon">▦</span>Accommodation</a>
+        <a class="" href="profile.html"><span class="nav-icon">◎</span>My Profile</a>
+        <a href="choose-room.html"><span class="nav-icon">⌗</span>Choose Room</a>
+      </nav>
+      <div class="portal-sidebar-foot">CMDI Hotel Check-In<br>Client portal · Secure account access</div>
+    </aside>
+    <main class="portal-main">
+      <header class="portal-topbar">
+        <div class="portal-breadcrumb">CMDI <span aria-hidden="true">/</span> Client Portal <span aria-hidden="true">/</span> Accommodation</div>
+        <div class="portal-top-actions"><div class="portal-user-chip"><span class="portal-avatar" data-client-initials>G</span><span data-client-name>Guest</span></div><button class="portal-logout" id="signOutBtn" type="button">Sign out</button></div>
+      </header>
+      <section id="portalLoading" class="portal-loading"><div class="portal-skeleton" style="max-width:220px;margin:0 auto 12px"></div>Loading your CMDI account…</section>
+      <div id="portalMessage" class="portal-alert" hidden></div>
+      <section id="portalContent" hidden>
+<div class="portal-hero"><div><p class="portal-eyebrow">CLIENT PORTAL · CMDI HOTEL</p><h1 class="portal-heading">Accommodation</h1><p class="portal-subtitle">View your room request or the room assignment recorded on your CMDI profile.</p></div></div><div class="portal-grid"><article class="portal-card span-7"><div class="portal-card-head"><div><p class="portal-eyebrow">ROOM INFORMATION</p><h2>Current room status</h2></div><span id="roomStatus" class="portal-status">Loading</span></div>
+<div id="roomSummary" class="portal-room-display hidden"><div><small>Room recorded on your profile</small><strong id="roomSummaryNumber">—</strong><p><span id="roomSummaryFloor">—</span> · <span id="roomSummaryCapacity">—</span></p></div><div class="portal-room-symbol">⌂</div></div>
+<div id="noRoomSummary" class="portal-empty"><strong>You do not have a room request or assignment yet.</strong><p>When your registration is verified, you can browse active CMDI rooms.</p><a class="portal-btn" href="choose-room.html" data-choose-room>Browse rooms</a></div>
+<p class="portal-muted" data-room-request-message hidden></p><p class="portal-muted" data-assigned-room-message hidden></p>
+</article><article class="portal-card span-5"><div class="portal-card-head"><div><p class="portal-eyebrow">ROOM CAPACITY</p><h2>CMDI room limits</h2></div></div><div class="portal-info"><small>Floor 2 · Rooms 201–211</small><strong>Maximum 5 occupants per room</strong></div><div class="portal-info"><small>Floor 3 · Rooms 301–311</small><strong>Maximum 3 occupants per room</strong></div><p class="portal-muted" style="margin-top:12px">Room availability can change. Final room capacity and occupancy are validated by CMDI staff and the Supabase database.</p></article>
+<article class="portal-card full"><div class="portal-card-head"><div><p class="portal-eyebrow">CHECK-IN INFORMATION</p><h2>About your stay record</h2></div></div><div class="portal-note"><span aria-hidden="true">ⓘ</span><span>This page shows your profile's room request or assigned room. It does not invent an actual check-in date, checkout date, or active stay. Front Desk records official check-in and checkout transactions in the protected stay-history system.</span></div></article></div>
+      </section>
+      <footer class="portal-footer">CMDI Hotel Check-In · Your account information is shown securely.</footer>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/client-portal.js" defer></script>
+</body>
+</html>
