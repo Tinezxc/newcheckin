@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#1b3a2e">
-<title>Client QR Scanner | CMDI Staff</title>
+<title>Client QR Check-in / Check-out | CMDI Staff</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="CSS/staff-dashboard.css">
 <link rel="stylesheet" href="CSS/notification.css">
 <link rel="stylesheet" href="CSS/staff-qr-scanner.css">
+<link rel="stylesheet" href="CSS/staff-qr-actions.css">
 </head>
 <body>
 <div class="dashboard-layout">
@@ -44,12 +45,12 @@
     <main class="main-content">
         <header class="topbar">
             <div class="topbar-title">
-                <span class="qr-eyebrow">CMDI REGISTRATION</span>
-                <h1 class="app-title">Client QR Scanner</h1>
+                <span class="qr-eyebrow">CMDI FRONT DESK OPERATIONS</span>
+                <h1 class="app-title">Client QR Check-in / Check-out</h1>
                 <p class="app-subtitle">Staff console · <span id="roleBreadcrumb">Verifying…</span></p>
             </div>
             <div class="topbar-actions">
-                <span class="qr-secure-label"><span></span> Secure staff lookup</span>
+                <span class="qr-secure-label"><span></span> Secure Front Desk action</span>
                 <div class="topbar-avatar">ST</div>
             </div>
         </header>
@@ -60,11 +61,11 @@
                     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><path d="M14 14h3v3h-3zM20 14v2M14 20h2M20 20h1"></path></svg>
                 </div>
                 <div>
-                    <span class="qr-kicker">REGISTRATION VERIFICATION</span>
+                    <span class="qr-kicker">GUEST STAY VERIFICATION</span>
                     <h2>Scan a client QR code</h2>
-                    <p>Scan the QR shown in the client profile to retrieve their CMDI registration record.</p>
+                    <p>The system checks the guest's current stay and determines whether the next action is check-in or check-out.</p>
                 </div>
-                <div class="qr-readonly-note"><span class="qr-dot"></span> Read-only lookup</div>
+                <div class="qr-readonly-note qr-confirm-note"><span class="qr-dot"></span> Confirmation required</div>
             </section>
 
             <section class="qr-workspace">
@@ -104,25 +105,47 @@
                     <form id="manualLookupForm" class="qr-manual-form" novalidate>
                         <label for="manualGuestId">Client Guest ID</label>
                         <div class="qr-input-wrap"><span>CMDI</span><input id="manualGuestId" type="text" maxlength="60" placeholder="TR-0001" autocomplete="off" spellcheck="false"></div>
-                        <button class="qr-btn qr-btn-primary qr-lookup-btn" id="manualLookupBtn" type="submit">Find registration</button>
+                        <button class="qr-btn qr-btn-primary qr-lookup-btn" id="manualLookupBtn" type="submit">Find guest</button>
                     </form>
                     <div class="qr-help-card">
                         <strong>Where can clients find their QR?</strong>
-                        <p>Clients open their CMDI Profile and tap the QR Code button. Ask them to show the QR on their phone.</p>
+                        <p>Clients open their CMDI Profile and tap the QR Code button. The existing QR contains their Guest ID only.</p>
                     </div>
-                    <div class="qr-privacy-note"><span aria-hidden="true">&#128274;</span><p>Only authorized Front Desk accounts can perform this lookup. Email, phone, and address are not shown.</p></div>
+                    <div class="qr-privacy-note"><span aria-hidden="true">&#128274;</span><p>Only active Front Desk accounts with a verified Login OTP session can use this scanner. The QR itself does not contain personal or stay details.</p></div>
                 </article>
             </section>
 
-            <section class="card qr-result-panel" id="resultPanel" hidden aria-live="polite">
+            <section class="card qr-result-panel qr-action-result" id="resultPanel" hidden aria-live="polite">
                 <div class="qr-result-header">
-                    <div><span class="qr-section-label">SCAN RESULT</span><h3>Client registration</h3></div>
-                    <span id="registrationBadge" class="qr-status-badge">Waiting</span>
+                    <div><span class="qr-section-label">GUEST STATUS</span><h3 id="resultTitle">Guest identified</h3></div>
+                    <span id="actionBadge" class="qr-status-badge">Checking…</span>
                 </div>
                 <div id="resultContent" class="qr-result-content"></div>
+
+                <form id="checkinActionForm" class="qr-transaction-box" hidden novalidate>
+                    <div class="qr-transaction-heading">
+                        <strong>Check-in confirmation</strong>
+                        <span>Review the room and checkout schedule before saving.</span>
+                    </div>
+                    <label for="expectedCheckoutAt">Expected check-out date and time</label>
+                    <input id="expectedCheckoutAt" type="datetime-local" required>
+                    <small>The time is based on the Front Desk device's local time. It must be in the future.</small>
+                    <button class="qr-btn qr-btn-primary" id="confirmCheckinBtn" type="submit">Confirm check-in</button>
+                </form>
+
+                <div id="checkoutAction" class="qr-transaction-box" hidden>
+                    <div class="qr-transaction-heading">
+                        <strong>Check-out confirmation</strong>
+                        <span>This will complete the active stay and update the room status.</span>
+                    </div>
+                    <button class="qr-btn qr-btn-danger" id="confirmCheckoutBtn" type="button">Confirm check-out</button>
+                </div>
+
+                <div id="blockedActionNote" class="qr-blocked-note" hidden></div>
+
                 <div class="qr-result-footer">
-                    <p id="resultFootnote">Read-only registration information. Continue to the existing check-in workflow when appropriate.</p>
-                    <button id="scanNextBtn" class="qr-btn qr-btn-primary" type="button">Scan another client</button>
+                    <p id="resultFootnote">No transaction has been saved yet.</p>
+                    <button id="scanNextBtn" class="qr-btn qr-btn-light" type="button">Scan another guest</button>
                 </div>
             </section>
 
@@ -131,7 +154,7 @@
                 <button id="dismissErrorBtn" class="qr-icon-button" type="button" aria-label="Dismiss error">&times;</button>
             </section>
 
-            <footer class="dashboard-footer"><span>CMDI · Staff console</span><span>Registration QR lookup · Read only</span></footer>
+            <footer class="dashboard-footer"><span>CMDI · Staff console</span><span>Guest QR · Check-in / Check-out</span></footer>
         </div>
     </main>
 </div>

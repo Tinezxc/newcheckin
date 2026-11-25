@@ -1,0 +1,39 @@
+/* Additional styling for the QR check-in / check-out confirmation workflow. */
+.qr-confirm-note { white-space: nowrap; }
+.qr-transaction-box {
+    display: grid;
+    gap: 12px;
+    margin-top: 20px;
+    padding: 20px;
+    border: 1px solid rgba(27, 58, 46, .16);
+    border-radius: 14px;
+    background: #f7faf8;
+}
+.qr-transaction-heading { display: grid; gap: 4px; }
+.qr-transaction-heading strong { color: #1b3a2e; font-size: 15px; }
+.qr-transaction-heading span,
+.qr-transaction-box small { color: #66736c; font-size: 13px; line-height: 1.5; }
+.qr-transaction-box label { color: #34443b; font-size: 13px; font-weight: 600; }
+.qr-transaction-box input[type="datetime-local"] {
+    width: 100%; min-height: 44px; padding: 10px 12px;
+    border: 1px solid #cbd6cf; border-radius: 9px;
+    background: #fff; color: #20372b; font: inherit;
+}
+.qr-transaction-box .qr-btn { justify-self: start; min-width: 190px; }
+.qr-btn-danger { background: #9d3434 !important; color: #fff !important; border-color: #9d3434 !important; }
+.qr-btn-danger:hover { background: #842929 !important; }
+.qr-blocked-note {
+    margin-top: 18px; padding: 14px 16px;
+    border: 1px solid #e7c9a0; border-radius: 12px;
+    background: #fff8ed; color: #76501d;
+    font-size: 13px; line-height: 1.6;
+}
+.qr-action-result .qr-result-content { margin-top: 14px; }
+.qr-action-result .qr-result-footer { align-items: center; gap: 16px; }
+.qr-action-result .qr-result-footer p { line-height: 1.5; }
+@media (max-width: 640px) {
+    .qr-confirm-note { white-space: normal; }
+    .qr-transaction-box { padding: 16px; }
+    .qr-transaction-box .qr-btn { width: 100%; }
+    .qr-action-result .qr-result-footer { align-items: stretch; }
+}

@@ -6,13 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const USERS = [];   // filled from the database
 
     const ROLES = [
-        { name: 'Guest',         count: 9,  desc: 'External users with limited self-service access. They can view their own stay, submit service requests and manage their profile.', grantAll: ['view own stay', 'submit service requests', 'update own profile'] },
-        { name: 'Front desk',    count: 4,  desc: 'Day-to-day operations for arrivals, departures, room assignment and guest services.', grantAll: ['view guests', 'reveal masked data', 'check in / out', 'change rooms'] },
-        { name: 'Housekeeping',  count: 3,  desc: 'Room cleaning, laundry and status updates. Cannot see guest contact details.', grantAll: ['view rooms', 'update cleaning status', 'view own requests'] },
-        { name: 'Maintenance',   count: 2,  desc: 'Repairs and maintenance tasks. Read-only for guest details.', grantAll: ['view rooms', 'update maintenance status', 'view own requests'] },
-        { name: 'Manager',       count: 1,  desc: 'Full hotel operations, reporting and staff oversight.', grantAll: ['view guests', 'reveal masked data', 'check in / out', 'force check-out', 'view reports', 'export data', 'manage staff'] },
-        { name: 'Support admin', count: 2,  desc: 'Platform support for user accounts and basic security. Cannot export or delete data.', grantAll: ['view users', 'reset passwords', 'unlock accounts', 'view audit logs'] },
-        { name: 'Super admin',   count: 1,  desc: 'Full platform access including destructive actions, backups and system settings.', grantAll: ['everything'] }
+        { name: 'Guest',         count: 9,  desc: 'Client portal account for personal details and room requests.', grantAll: ['view own stay', 'submit service requests', 'update own profile'] },
+        { name: 'Front desk',    count: 4,  desc: 'Handles guest registration review, room requests and check-in operations.', grantAll: ['view guests', 'reveal masked data', 'check in / out', 'change rooms'] },
+        { name: 'Housekeeping',  count: 3,  desc: 'Handles room cleaning tasks and housekeeping status updates.', grantAll: ['view rooms', 'update cleaning status', 'view own requests'] },
+        { name: 'Maintenance',   count: 2,  desc: 'Handles maintenance tasks and room repair status updates.', grantAll: ['view rooms', 'update maintenance status', 'view own requests'] },
+        { name: 'Manager',       count: 1,  desc: 'Oversees daily operations and staff work through the Manager dashboard.', grantAll: ['view guests', 'reveal masked data', 'check in / out', 'force check-out', 'view reports', 'export data', 'manage staff'] },
+        { name: 'Support admin', count: 2,  desc: 'Provides limited account support, password resets and administrator assistance.', grantAll: ['view users', 'reset passwords', 'unlock accounts', 'view audit logs'] },
+        { name: 'Super admin',   count: 1,  desc: 'Manages administrator accounts and authorized account-control actions.', grantAll: ['everything'] }
     ];
 
     const PERMISSIONS = [
@@ -314,9 +314,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         menu.innerHTML = `
             <li><button data-menu="view">View details</button></li>
-            ${!isGuest ? `
-                <li><button data-menu="change-role" ${isMe || isLastSuper ? 'disabled title="You cannot change your own role or the last Super admin"' : ''}>Change role</button></li>
-            ` : ''}
             <li><button data-menu="reset-password" ${isGuest ? 'disabled title="Guest accounts do not have passwords"' : ''}>Reset password</button></li>
             <li><button data-menu="reset-2fa" ${!u.twofa ? 'disabled' : ''}>Reset 2FA</button></li>
             ${u.status === 'locked' ? `<li><button data-menu="unlock" data-role="super-admin">Unlock account</button></li>` : ''}
@@ -477,8 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     $('#bulkRemind')?.addEventListener('click', () => {
-        toast('success', 'Reminders sent', `${state.selected.size} invite reminder(s) queued.`);
-        $('#bulkClear').click();
+        toast('error', 'Not available', 'Invite reminders are not connected to the CMDI system.');
     });
 
     $('#bulkSuspend')?.addEventListener('click', (e) => {
@@ -497,6 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderRoles() {
         const grid = $('#roleGrid');
+        if (!grid) return;
         grid.innerHTML = ROLES.map((r) => `
             <div class="role-card">
                 <div class="role-card-head">
@@ -504,21 +501,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="role-card-count">${countFor(r.name)} user${countFor(r.name) === 1 ? '' : 's'}</span>
                 </div>
                 <p class="role-card-desc">${r.desc}</p>
-                <button class="btn btn-outline btn-sm" data-view-perms="${r.name}">View permissions</button>
             </div>
         `).join('');
-
-        $$('[data-view-perms]').forEach((b) => {
-            b.addEventListener('click', () => {
-                $$('.tab').forEach((t) => {
-                    const active = t.dataset.tab === 'permissions';
-                    t.classList.toggle('active', active);
-                    t.setAttribute('aria-selected', String(active));
-                });
-                $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === 'permissions'));
-                toast('success', 'Permissions shown', `Viewing matrix for ${b.dataset.viewPerms}.`);
-            });
-        });
     }
     renderRoles();
 
@@ -747,12 +731,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </li>
         `).join('');
 
-        // Activity + History
-        $('#pActivity').innerHTML = `
-            <li><span class="history-dot"></span><div><p><strong>${u.name}</strong> signed in from Chrome · macOS</p><span>${u.lastActive}</span></div></li>
-            <li><span class="history-dot"></span><div><p><strong>${u.name}</strong> updated profile</p><span>Yesterday</span></div></li>
-            <li><span class="history-dot"></span><div><p><strong>${u.name}</strong> password changed</p><span>Oct 2, 2026</span></div></li>
-        `;
+        // History below is loaded from the real role_history table.
         $('#pHistory').innerHTML = ROLE_HISTORY.filter((h) => h.target === u.name).slice(0, 5).map((h) => `
             <li><span class="history-dot"></span><div><p><strong>${h.admin}</strong> changed role from <em>${h.oldRole}</em> to <em>${h.newRole}</em></p><span>${h.time} · ${h.reason}</span></div></li>
         `).join('') || '<li style="color:var(--text-muted);font-size:0.8rem">No role history for this user.</li>';
@@ -875,26 +854,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildSummary() {
-        const role = $('#cuRole').value;
-        const perms = PERMISSIONS.filter((p) => p.roles[role]).map((p) => ({
-            label: p.label, sensitive: p.sensitive
-        }));
-        $('#cuSummaryList').innerHTML = perms.length
-            ? perms.map((p) => `
-                <li>
-                    <span class="perm-name">${p.label}</span>
-                    <span class="perm-state ${p.sensitive ? 'sensitive' : 'granted'}">${p.sensitive ? '⚠ Sensitive' : '✓ Granted'}</span>
-                </li>
-            `).join('')
-            : '<li style="color:var(--text-muted);font-size:0.8rem">This role has no permissions beyond basic access.</li>';
+        const roleLabel = $('#cuRole').value;
+        $('#cuSummaryList').innerHTML = `
+            <li><span class="perm-name">Selected account role</span><strong>${esc(roleLabel)}</strong></li>
+            <li><span class="perm-name">Access control</span><span class="perm-state granted">Managed by CMDI backend rules</span></li>
+        `;
         const how = $('#cuSummaryHow');
         if (how) how.textContent = $('#cuTempPw') && $('#cuTempPw').checked
-            ? 'You will see a temporary password to share with them, once.'
-            : 'They will get an email invite to set their own password.';
-        $('#cuSummaryExpiry').textContent = new Date($('#cuExpiry').value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            ? 'A temporary password will be shown once after account creation.'
+            : 'An invitation email will be sent so the person can set a password.';
+        const expiry = $('#cuExpiry').value;
+        $('#cuSummaryExpiry').textContent = expiry
+            ? new Date(`${expiry}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'No expiry set';
     }
 
-    $('#createUserBtn')?.addEventListener('click', () => openCreate('user'));
+    $('#createUserBtn')?.addEventListener('click', (e) => {
+        if (state.role !== 'super-admin') {
+            toast('error', 'Not allowed', 'Only a Super Admin can create accounts.');
+            return;
+        }
+        openCreate('user');
+    });
     $('#createAdminBtn')?.addEventListener('click', (e) => {
         if (e.currentTarget.getAttribute('aria-disabled') === 'true') {
             toast('error', 'Not allowed', 'Super admin access required.');
@@ -1358,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const expired = p.access_expires_at && new Date(p.access_expires_at) < new Date();
         if (!['super-admin', 'support-admin'].includes(p.role) || p.status === 'suspended' || expired) {
-            showAdminGate('Admin area', 'This part of Haven is for administrators only.', false);
+            showAdminGate('Admin area', 'This part of CMDI is for administrators only.', false);
             return null;
         }
         const name = p.full_name || 'Admin';

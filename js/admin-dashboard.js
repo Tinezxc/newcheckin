@@ -1,434 +1,181 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const db = window.supabaseClient;
+  const $ = (selector) => document.querySelector(selector);
+  const STAFF_ROLES = new Set(['front-desk', 'housekeeping', 'maintenance', 'manager']);
+  const ADMIN_ROLES = new Set(['super-admin', 'support-admin']);
+  const ROLE_LABELS = {
+    client: 'Client', 'front-desk': 'Front Desk', housekeeping: 'Housekeeping',
+    maintenance: 'Maintenance', manager: 'Manager', 'support-admin': 'Support Admin',
+    'super-admin': 'Super Admin'
+  };
 
-    /* ==========================================
-       ADMIN IDENTITY (static)
-       ========================================== */
-    const staffNameEl = document.querySelector('.staff-name');
-    const staffAvatarEl = document.querySelector('.staff-avatar');
-    const topbarAvatar = document.querySelector('.topbar-avatar');
-    if (staffNameEl) staffNameEl.textContent = 'Sarah Villanueva';
-    if (staffAvatarEl) staffAvatarEl.textContent = 'SV';
-    if (topbarAvatar) topbarAvatar.textContent = 'SV';
+  const menu = $('#menuToggle');
+  const sidebar = $('#sidebar');
+  const scrim = $('#scrim');
+  const closeMenu = () => { sidebar?.classList.remove('open'); scrim?.classList.remove('open'); menu?.setAttribute('aria-expanded', 'false'); };
+  menu?.addEventListener('click', () => {
+    const open = sidebar.classList.toggle('open');
+    scrim.classList.toggle('open', open);
+    menu.setAttribute('aria-expanded', String(open));
+  });
+  scrim?.addEventListener('click', closeMenu);
 
-    /* ==========================================
-       MOBILE SIDEBAR
-       ========================================== */
-    const toggle = document.getElementById('menuToggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const closeSidebar = () => {
-        sidebar?.classList.remove('open');
-        overlay?.classList.remove('open');
-        toggle?.setAttribute('aria-expanded', 'false');
-    };
-    toggle?.addEventListener('click', () => {
-        const open = sidebar.classList.toggle('open');
-        overlay.classList.toggle('open', open);
-        toggle.setAttribute('aria-expanded', String(open));
-    });
-    overlay?.addEventListener('click', closeSidebar);
-
-    /* ==========================================
-       ATTENTION LIST
-       ========================================== */
-    const ATTENTION = [
-        { severity: 'critical', title: 'Last backup failed',       sub: 'Nightly backup at 3:00 AM · S3 endpoint unreachable', action: 'Open Data and backups', source: 'data' },
-        { severity: 'warning',  title: 'Door-lock sync failing',   sub: 'Salto API timing out · 12 staff affected',            action: 'View integration',      source: 'integrations' },
-        { severity: 'warning',  title: '1 manager without 2FA',    sub: 'Joy Lim · policy requires 2FA for manager-level',     action: 'Open Users and roles',  source: 'users' },
-        { severity: 'warning',  title: '1 locked account',         sub: 'Omar Haddad · after 5 failed logins',                 action: 'Open Users and roles',  source: 'users' },
-        { severity: 'warning',  title: 'Unusual data-reveal activity', sub: 'Joy Lim revealed 24 records in under an hour',     action: 'Review audit log',      source: 'audit' }
-    ];
-
-    function renderAttention() {
-        const list = document.getElementById('attentionList');
-        list.innerHTML = ATTENTION.map((item, i) => `
-            <li class="attention-item">
-                <span class="attention-icon ${item.severity}">${item.severity === 'critical' ? '⚠' : '!'}</span>
-                <div class="attention-body">
-                    <div class="attention-title">${item.title}</div>
-                    <div class="attention-sub">${item.sub}</div>
-                </div>
-                <div class="attention-actions">
-                    <button class="btn btn-outline btn-sm" data-attn="${i}">${item.action}</button>
-                </div>
-            </li>
-        `).join('');
-
-        list.querySelectorAll('[data-attn]').forEach((b) => {
-            b.addEventListener('click', () => {
-                const item = ATTENTION[Number(b.dataset.attn)];
-                toast('success', 'Opening', item.action);
-                if (item.source === 'data') window.location.href = 'admin-data.html';
-                else if (item.source === 'integrations') window.location.href = 'admin-integrations.html';
-                else if (item.source === 'users') window.location.href = 'admin-users.html';
-                else if (item.source === 'audit') window.location.href = 'admin-audit.html';
-            });
-        });
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function initials(name) {
+    return String(name || 'Admin').trim().split(/\s+/).slice(0, 2).map(x => x[0] || '').join('').toUpperCase() || 'AD';
+  }
+  function setNotice(message, type = '') {
+    const el = $('#pageNotice');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = `notice ${type}`.trim();
+    el.hidden = !message;
+  }
+  function showGate(message, retry = false) {
+    $('#loadingPanel').hidden = true;
+    $('#dashboardContent').hidden = true;
+    setNotice(message, 'error');
+    if (retry) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'refresh-btn'; button.textContent = 'Try again';
+      button.addEventListener('click', () => window.location.reload());
+      $('#pageNotice').append(' ', button);
     }
-    renderAttention();
+  }
+  function formatDate(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  function roleLabel(role) { return ROLE_LABELS[String(role || '').toLowerCase()] || String(role || 'Unknown'); }
+  function accountStatus(status) {
+    const safe = String(status || 'unknown').toLowerCase();
+    const label = safe.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const cls = ['active','suspended','locked','invited'].includes(safe) ? safe : '';
+    return `<span class="status-pill ${cls}">${escapeHtml(label)}</span>`;
+  }
 
-    /* ==========================================
-       USER COUNTS
-       ========================================== */
-    const USERS = [
-        { id: 1,  name: 'Sarah Villanueva', email: 'sarah@haven.app',   role: 'Admin',         status: 'active',  twofa: true,  lastActive: 'Now',                 initials: 'SV', isMe: true },
-        { id: 2,  name: 'Ravi Batra',       email: 'ravi@haven.app',    role: 'Manager',       status: 'active',  twofa: true,  lastActive: 'Today · 4:30 PM',     initials: 'RB' },
-        { id: 3,  name: 'Marco Cruz',       email: 'marco@haven.app',   role: 'Front desk',    status: 'active',  twofa: true,  lastActive: 'Today · 4:21 PM',     initials: 'MC' },
-        { id: 4,  name: 'Joy Lim',          email: 'joy@haven.app',     role: 'Housekeeping',  status: 'active',  twofa: false, lastActive: 'Today · 3:40 PM',     initials: 'JL' },
-        { id: 5,  name: 'Ana Torres',       email: 'ana@haven.app',     role: 'Housekeeping',  status: 'active',  twofa: true,  lastActive: 'Today · 1:02 PM',     initials: 'AT' },
-        { id: 6,  name: 'Diego Santos',     email: 'diego@haven.app',   role: 'Maintenance',   status: 'active',  twofa: true,  lastActive: 'Today · 11:30 AM',    initials: 'DS' },
-        { id: 7,  name: 'Priya Nair',       email: 'priya@haven.app',   role: 'Front desk',    status: 'active',  twofa: true,  lastActive: 'Today · 9:42 AM',     initials: 'PN' },
-        { id: 8,  name: 'Omar Haddad',      email: 'omar@haven.app',    role: 'Front desk',    status: 'locked',  twofa: true,  lastActive: 'Oct 6 · 2:15 PM',     initials: 'OH' },
-        { id: 9,  name: 'Hana Kim',         email: 'hana@haven.app',    role: 'Housekeeping',  status: 'active',  twofa: true,  lastActive: 'Oct 9 · 6:30 AM',     initials: 'HK' },
-        { id: 10, name: 'Tomás Silva',      email: 'tomas@haven.app',   role: 'Maintenance',   status: 'active',  twofa: false, lastActive: 'Yesterday · 5:15 PM', initials: 'TS' },
-        { id: 11, name: 'Kim Reyes',        email: 'kim@haven.app',     role: 'Housekeeping',  status: 'active',  twofa: true,  lastActive: 'Yesterday · 8:10 PM', initials: 'KR' },
-        { id: 12, name: 'Alex Del Rosario', email: 'alex@haven.app',    role: 'Front desk',    status: 'invited', twofa: false, lastActive: '—',                   initials: 'AD' },
-        { id: 13, name: 'Mei Chen',         email: 'mei@example.com',   role: 'Guest',         status: 'active',  twofa: false, lastActive: 'Today · 3:14 PM',     initials: 'MC' },
-        { id: 14, name: 'Sofia Reyes',      email: 'sofia@example.com', role: 'Guest',         status: 'active',  twofa: false, lastActive: 'Today · 8:02 AM',     initials: 'SR', guestId: 'TR-1001', regId: 'HV-1001', room: '201', checkout: 'Oct 9, 2026', overdueDays: 2 },
-        { id: 15, name: 'Aiko Tanaka',      email: 'aiko@example.com',  role: 'Guest',         status: 'active',  twofa: false, lastActive: 'Today · 10:30 AM',    initials: 'AT' },
-        { id: 16, name: 'Diego Marquez',    email: 'diego.m@example.com', role: 'Guest',       status: 'active',  twofa: false, lastActive: 'Today · 11:05 AM',    initials: 'DM' },
-        { id: 17, name: 'Lena Okafor',      email: 'lena@example.com',  role: 'Guest',         status: 'active',  twofa: false, lastActive: 'Yesterday · 6:42 PM', initials: 'LO' },
-        { id: 18, name: 'Ravi Patel',       email: 'ravi.p@example.com', role: 'Guest',        status: 'active',  twofa: false, lastActive: 'Yesterday · 4:20 PM', initials: 'RP' },
-        { id: 19, name: 'Rina Suzuki',      email: 'rina@example.com',  role: 'Guest',         status: 'active',  twofa: false, lastActive: 'Oct 8 · 3:10 PM',     initials: 'RS' },
-        { id: 20, name: 'Carlos Mendez',    email: 'carlos@example.com', role: 'Guest',        status: 'active',  twofa: false, lastActive: 'Oct 7 · 9:20 AM',     initials: 'CM' }
-    ];
+  async function load() {
+    if (!db) { showGate('Supabase is not initialized. Check the existing js/supabase-client.js file.', true); return; }
+    $('#loadingPanel').hidden = false;
+    $('#dashboardContent').hidden = true;
+    setNotice('');
 
-    function renderUserCounts() {
-        const counts = USERS.reduce((acc, u) => {
-            acc[u.role] = (acc[u.role] || 0) + 1;
-            return acc;
-        }, {});
-        const labels = ['Guest', 'Front desk', 'Housekeeping', 'Maintenance', 'Manager', 'Admin'];
-        document.getElementById('userCounts').innerHTML = labels.map((label) => `
-            <div class="user-count">
-                <span class="user-count-label">${label}</span>
-                <span class="user-count-value">${counts[label] || 0}</span>
-            </div>
-        `).join('');
-    }
-    renderUserCounts();
+    const { data: sessionData, error: sessionError } = await db.auth.getSession();
+    if (sessionError) throw sessionError;
+    const session = sessionData?.session;
+    if (!session?.user?.id) { window.location.replace('index.html'); return; }
 
-    function renderUsers() {
-        const body = document.getElementById('usersBody');
-        const list = USERS.slice(0, 5);
-        body.innerHTML = list.map((u) => `
-            <tr tabindex="0" data-user-id="${u.id}">
-                <td>
-                    <div class="guest-cell">
-                        <span class="guest-avatar">${u.initials}</span>
-                        <div>
-                            <div>${u.name}${u.isMe ? ' <span class="muted">(you)</span>' : ''}</div>
-                            <div class="muted" style="font-size:0.72rem">${u.email}</div>
-                        </div>
-                    </div>
-                </td>
-                <td class="hide-sm">${u.role}</td>
-                <td>
-                    <span class="status-pill ${u.status}">
-                        <span class="dot"></span>
-                        ${u.status === 'active' ? 'Active' : u.status === 'locked' ? 'Locked' : u.status === 'invited' ? 'Invited' : 'Suspended'}
-                    </span>
-                </td>
-                <td class="hide-md">
-                    ${u.twofa ? `<span class="twofa-on">✓ Enabled</span>` : `<span class="twofa-off">⚠ Not set</span>`}
-                </td>
-                <td class="hide-sm muted">${u.lastActive}</td>
-            </tr>
-        `).join('');
+    const { data: profile, error: profileError } = await db.from('profiles')
+      .select('full_name, role, status, access_expires_at')
+      .eq('id', session.user.id).single();
+    if (profileError || !profile) throw new Error(profileError?.message || 'Your CMDI profile could not be found.');
 
-        body.querySelectorAll('tr[data-user-id]').forEach((row) => {
-            row.addEventListener('click', () => openUserDrawer(Number(row.dataset.userId)));
-            row.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') { e.preventDefault(); openUserDrawer(Number(row.dataset.userId)); }
-                if (e.key === 'ArrowDown') { e.preventDefault(); row.nextElementSibling?.focus(); }
-                if (e.key === 'ArrowUp')   { e.preventDefault(); row.previousElementSibling?.focus(); }
-            });
-        });
-    }
-    renderUsers();
-
-    /* ==========================================
-       AUDIT FEED
-       ========================================== */
-    const AUDIT = [
-        { staff: 'Sarah Villanueva', initials: 'SV', action: 'forced check-out for', target: 'Room 303 · Diego Marquez', time: '2 min ago', severity: 'warning' },
-        { staff: 'Ravi Batra',       initials: 'RB', action: 'revealed masked data for', target: 'Sofia Reyes · TR-1001', time: '22 min ago', severity: 'info' },
-        { staff: 'Sarah Villanueva', initials: 'SV', action: 'suspended account', target: 'Omar Haddad · Front desk', time: '1 hr ago', severity: 'critical' },
-        { staff: 'System',           initials: 'SY', action: 'backup failed for', target: 'nightly-backup-2026-10-10', time: '3 hr ago', severity: 'critical' },
-        { staff: 'Sarah Villanueva', initials: 'SV', action: 'changed role for', target: 'Ravi Batra · Manager', time: '5 hr ago', severity: 'warning' },
-        { staff: 'Ravi Batra',       initials: 'RB', action: 'exported report', target: 'Audit log · Sept 2026', time: 'Yesterday · 5:20 PM', severity: 'info' },
-        { staff: 'Sarah Villanueva', initials: 'SV', action: 'restored backup from', target: '2026-10-08 03:00', time: 'Yesterday · 2:10 PM', severity: 'warning' },
-        { staff: 'System',           initials: 'SY', action: 'flagged unusual activity', target: 'Joy Lim · 24 reveals in 1h', time: 'Yesterday · 11:40 AM', severity: 'critical' }
-    ];
-
-    function renderAudit() {
-        document.getElementById('auditFeed').innerHTML = AUDIT.map((a) => `
-            <li class="audit-item">
-                <span class="audit-avatar">${a.initials}</span>
-                <div class="audit-body">
-                    <p class="audit-text">
-                        <strong>${a.staff}</strong>
-                        ${a.action}
-                        ${a.target ? `<em>${a.target}</em>` : ''}
-                    </p>
-                    <span class="audit-time">${a.time}</span>
-                </div>
-            </li>
-        `).join('');
-    }
-    renderAudit();
-
-    /* ==========================================
-       INTEGRATIONS
-       ========================================== */
-    const INTEGRATIONS = [
-        { id: 1, icon: '✉️', name: 'Email delivery',    meta: 'SendGrid · last sync 3 min ago',  status: 'healthy',  statusLabel: 'Healthy' },
-        { id: 2, icon: '💬', name: 'SMS notifications', meta: 'Twilio · last sync 12 min ago',   status: 'warning',  statusLabel: 'Degraded' },
-        { id: 3, icon: '💳', name: 'Payments',          meta: 'Stripe · last sync 45 min ago',   status: 'healthy',  statusLabel: 'Healthy' },
-        { id: 4, icon: '🔒', name: 'Door locks',        meta: 'Salto · last sync failed',        status: 'critical', statusLabel: 'Failed' },
-        { id: 5, icon: '☁️', name: 'Cloud backups',     meta: 'AWS S3 · last sync failed',       status: 'critical', statusLabel: 'Failed' }
-    ];
-
-    function renderIntegrations() {
-        document.getElementById('integrationList').innerHTML = INTEGRATIONS.map((i) => `
-            <li class="integration-item">
-                <span class="integration-logo" aria-hidden="true">${i.icon}</span>
-                <div class="integration-body">
-                    <div class="integration-name">${i.name}</div>
-                    <div class="integration-meta">${i.meta}</div>
-                </div>
-                <span class="integration-status ${i.status}">
-                    ${i.status === 'healthy' ? '✓' : i.status === 'warning' ? '⚠' : '✕'}
-                    ${i.statusLabel}
-                </span>
-                <button class="btn btn-outline btn-sm" data-test-conn="${i.id}">Test connection</button>
-            </li>
-        `).join('');
-
-        document.querySelectorAll('[data-test-conn]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const integ = INTEGRATIONS.find((x) => x.id === Number(btn.dataset.testConn));
-                if (integ) {
-                    toast('success', 'Connection tested', `${integ.name}: ${integ.statusLabel}.`);
-                }
-            });
-        });
-    }
-    renderIntegrations();
-
-    /* ==========================================
-       USER DRAWER
-       ========================================== */
-    const userDrawer = document.getElementById('userDrawer');
-    const userDrawerOverlay = document.getElementById('userDrawerOverlay');
-
-    function openUserDrawer(id) {
-        const u = USERS.find((x) => x.id === id);
-        if (!u) return;
-
-        document.getElementById('userDrawerAvatar').textContent = u.initials;
-        document.getElementById('userDrawerTitle').textContent = u.name;
-        document.getElementById('userDrawerSub').textContent = `${u.role} · ${u.email}`;
-
-        const statusEl = document.getElementById('userDrawerStatus');
-        statusEl.className = `status-pill ${u.status}`;
-        statusEl.innerHTML = `<span class="dot"></span> ${u.status === 'active' ? 'Active' : u.status === 'locked' ? 'Locked · requires unlock' : u.status === 'invited' ? 'Invited · invite pending' : 'Suspended'}`;
-
-        document.getElementById('dUserRole').textContent = u.role;
-        document.getElementById('dUserStatus').textContent = u.status.charAt(0).toUpperCase() + u.status.slice(1);
-        document.getElementById('dUser2FA').textContent = u.twofa ? 'Enabled' : 'Not set';
-        document.getElementById('dUserLastActive').textContent = u.lastActive;
-
-        if (u.id === 14) {
-            document.getElementById('dUserRoom').textContent = '201 · Floor 2';
-            document.getElementById('userDrawerSub').textContent = 'Guest · TR-1001 / HV-1001';
-            statusEl.className = 'status-pill overdue';
-            statusEl.innerHTML = '<span class="dot"></span> Overdue · 2 days';
-        } else {
-            document.getElementById('dUserRoom').textContent = '—';
-        }
-
-        document.getElementById('dUserHistory').innerHTML = AUDIT.slice(0, 4).map((a) => `
-            <li>
-                <span class="history-dot" aria-hidden="true"></span>
-                <div>
-                    <strong>${a.staff}</strong> ${a.action} ${a.target ? `<em>${a.target}</em>` : ''}
-                    <span>${a.time}</span>
-                </div>
-            </li>
-        `).join('');
-
-        userDrawer.hidden = false;
-        userDrawerOverlay.hidden = false;
-        requestAnimationFrame(() => {
-            userDrawer.classList.add('open');
-            userDrawerOverlay.classList.add('open');
-        });
-        document.body.style.overflow = 'hidden';
+    const role = String(profile.role || '').toLowerCase();
+    const expired = profile.access_expires_at && new Date(profile.access_expires_at) < new Date();
+    if (!ADMIN_ROLES.has(role) || profile.status === 'suspended' || expired) {
+      if (STAFF_ROLES.has(role)) { window.location.replace('staff-dashboard.html'); return; }
+      if (role === 'client') { window.location.replace('client-dashboard.html'); return; }
+      showGate('Administrator access is required. This page is for Super Admin and Support Admin accounts.');
+      return;
     }
 
-    function closeUserDrawer() {
-        userDrawer.classList.remove('open');
-        userDrawerOverlay.classList.remove('open');
-        document.body.style.overflow = '';
-        setTimeout(() => {
-            userDrawer.hidden = true;
-            userDrawerOverlay.hidden = true;
-        }, 250);
+    const name = profile.full_name || session.user.email || 'Administrator';
+    const mark = initials(name);
+    $('#welcomeName').textContent = name;
+    $('#sidebarName').textContent = name;
+    $('#sidebarRole').textContent = roleLabel(role);
+    $('#sidebarAvatar').textContent = mark;
+    $('#mobileAvatar').textContent = mark;
+
+    const { data: users, error: usersError } = await db.rpc('admin_list_users');
+    if (usersError) throw new Error(`Could not load accounts: ${usersError.message}`);
+    const rows = Array.isArray(users) ? users : [];
+    renderStats(rows);
+    renderAccounts(rows);
+    await renderRoleHistory();
+
+    $('#loadingPanel').hidden = true;
+    $('#dashboardContent').hidden = false;
+  }
+
+  function renderStats(rows) {
+    const normalized = rows.map(r => ({...r, role: String(r.role || '').toLowerCase(), status: String(r.status || 'unknown').toLowerCase()}));
+    const count = predicate => normalized.filter(predicate).length;
+    $('#totalAccounts').textContent = String(rows.length);
+    $('#clientAccounts').textContent = String(count(r => r.role === 'client'));
+    $('#staffAccounts').textContent = String(count(r => STAFF_ROLES.has(r.role)));
+    $('#adminAccounts').textContent = String(count(r => ADMIN_ROLES.has(r.role)));
+    $('#activeAccounts').textContent = String(count(r => r.status === 'active'));
+    $('#otherAccounts').textContent = String(count(r => r.status !== 'active'));
+  }
+
+  function renderAccounts(rows) {
+    const body = $('#accountsBody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="4" class="table-message">No account records were returned.</td></tr>';
+      return;
     }
+    const sorted = [...rows].sort((a, b) => {
+      const av = new Date(a.created_at || a.last_sign_in_at || 0).getTime();
+      const bv = new Date(b.created_at || b.last_sign_in_at || 0).getTime();
+      return bv - av;
+    }).slice(0, 7);
+    body.innerHTML = sorted.map(r => {
+      const name = r.full_name || r.email || 'Unnamed account';
+      return `<tr>
+        <td><div class="account-name">${escapeHtml(name)}</div><div class="account-email">${escapeHtml(r.email || '')}</div></td>
+        <td><span class="role-pill">${escapeHtml(roleLabel(r.role))}</span></td>
+        <td>${accountStatus(r.status)}</td>
+        <td>${escapeHtml(formatDate(r.last_sign_in_at))}</td>
+      </tr>`;
+    }).join('');
+  }
 
-    document.getElementById('userDrawerClose')?.addEventListener('click', closeUserDrawer);
-    userDrawerOverlay?.addEventListener('click', closeUserDrawer);
-
-    document.getElementById('breakGlassBtn')?.addEventListener('click', () => {
-        openConfirm('break-glass', 'Reveal masked guest data (break-glass)? This action will be logged and reviewed.', 'REVEAL');
-    });
-
-    /* ==========================================
-       STEP-UP MODAL
-       ========================================== */
-    const stepupOverlay = document.getElementById('stepupOverlay');
-    let stepupCallback = null;
-
-    function openStepup(onVerify) {
-        stepupCallback = onVerify;
-        document.getElementById('stepupPassword').value = '';
-        document.getElementById('stepupCode').value = '';
-        document.getElementById('stepupPasswordErr').textContent = '';
-        document.getElementById('stepupCodeErr').textContent = '';
-        openModal(stepupOverlay);
-        setTimeout(() => document.getElementById('stepupPassword').focus(), 100);
+  async function renderRoleHistory() {
+    const list = $('#roleHistoryList');
+    const { data, error } = await db.from('role_history').select('*').order('created_at', { ascending: false }).limit(5);
+    if (error) {
+      list.innerHTML = '<li class="table-message">Role history is not available for this account. Check its table permissions.</li>';
+      return;
     }
-    function closeStepup() { closeModal(stepupOverlay); }
-
-    document.getElementById('reauthBtn')?.addEventListener('click', () => {
-        openStepup(() => toast('success', 'Authenticated', 'Step-up successful. Sensitive actions enabled for 15 minutes.'));
-    });
-    document.getElementById('stepupClose')?.addEventListener('click', closeStepup);
-    document.getElementById('stepupCancel')?.addEventListener('click', closeStepup);
-    stepupOverlay?.addEventListener('click', (e) => { if (e.target === stepupOverlay) closeStepup(); });
-
-    document.getElementById('stepupVerify')?.addEventListener('click', () => {
-        const pass = document.getElementById('stepupPassword').value.trim();
-        const code = document.getElementById('stepupCode').value.trim();
-        let ok = true;
-        if (pass.length < 4) { document.getElementById('stepupPasswordErr').textContent = 'Enter your password.'; ok = false; }
-        if (!/^\d{6}$/.test(code)) { document.getElementById('stepupCodeErr').textContent = 'Enter a 6-digit 2FA code.'; ok = false; }
-        if (!ok) return;
-        stepupCallback?.();
-        closeStepup();
-    });
-
-    /* ==========================================
-       CONFIRM MODAL
-       ========================================== */
-    const confirmOverlay = document.getElementById('confirmOverlay');
-    let confirmCtx = null;
-
-    function openConfirm(action, text, keyword = 'CONFIRM') {
-        confirmCtx = { action, keyword };
-        document.getElementById('confirmTitle').textContent = action === 'break-glass' ? 'Break-glass reveal' : 'Confirm';
-        document.getElementById('confirmText').innerHTML = text;
-        document.getElementById('confirmWordPrompt').textContent = keyword;
-        document.getElementById('confirmWord').value = '';
-        document.getElementById('confirmReason').value = '';
-        document.getElementById('confirmWordErr').textContent = '';
-        document.getElementById('confirmReasonErr').textContent = '';
-        openModal(confirmOverlay);
-        setTimeout(() => document.getElementById('confirmWord').focus(), 100);
+    if (!data?.length) {
+      list.innerHTML = '<li class="table-message">No role changes recorded yet.</li>';
+      return;
     }
-    function closeConfirm() { closeModal(confirmOverlay); }
+    list.innerHTML = data.map(row => {
+      const actor = row.changed_by_name || 'Administrator';
+      const target = row.target_name || 'User account';
+      const oldRole = roleLabel(row.old_role || 'Unknown');
+      const newRole = roleLabel(row.new_role || 'Unknown');
+      return `<li><div class="activity-main"><strong>${escapeHtml(actor)}</strong> changed <strong>${escapeHtml(target)}</strong> from ${escapeHtml(oldRole)} to ${escapeHtml(newRole)}.</div><div class="activity-meta">${escapeHtml(formatDate(row.created_at))}</div>${row.reason ? `<div class="activity-reason">Reason: ${escapeHtml(row.reason)}</div>` : ''}</li>`;
+    }).join('');
+  }
 
-    document.getElementById('confirmClose')?.addEventListener('click', closeConfirm);
-    document.getElementById('confirmCancel')?.addEventListener('click', closeConfirm);
-    confirmOverlay?.addEventListener('click', (e) => { if (e.target === confirmOverlay) closeConfirm(); });
-
-    document.getElementById('confirmSubmit')?.addEventListener('click', () => {
-        const word = document.getElementById('confirmWord').value.trim();
-        const reason = document.getElementById('confirmReason').value.trim();
-        let ok = true;
-        if (word !== confirmCtx.keyword) {
-            document.getElementById('confirmWordErr').textContent = `Please type "${confirmCtx.keyword}" exactly.`;
-            ok = false;
-        }
-        if (reason.length < 5) {
-            document.getElementById('confirmReasonErr').textContent = 'Please provide a reason (min 5 characters).';
-            ok = false;
-        }
-        if (!ok) return;
-        const action = confirmCtx.action;
-        closeConfirm();
-        openStepup(() => {
-            if (action === 'break-glass') toast('success', 'Break-glass reveal', 'Data revealed for 30 seconds. Logged and will be reviewed.');
-            else toast('success', 'Done', 'Action completed.');
-        });
-    });
-
-    /* ==========================================
-       MODAL HELPERS
-       ========================================== */
-    function openModal(el) {
-        el.hidden = false;
-        requestAnimationFrame(() => el.classList.add('open'));
-        document.body.style.overflow = 'hidden';
+  $('#refreshBtn')?.addEventListener('click', async () => {
+    const btn = $('#refreshBtn');
+    btn.disabled = true; btn.textContent = 'Refreshing…';
+    try { await load(); }
+    catch (error) { console.error('[CMDI Admin]', error); showGate(error.message || 'Could not load Admin data.', true); }
+    finally { btn.disabled = false; btn.textContent = '↻ Refresh data'; }
+  });
+  $('#signOutBtn')?.addEventListener('click', async () => {
+    const btn = $('#signOutBtn'); btn.disabled = true; btn.textContent = 'Signing out…';
+    try {
+      const { error } = await db.auth.signOut();
+      if (error) throw error;
+      window.location.replace('index.html');
+    } catch (error) {
+      setNotice(error.message || 'Could not sign out.', 'error');
+      btn.disabled = false; btn.textContent = '↪ Sign out';
     }
-    function closeModal(el) {
-        el.classList.remove('open');
-        document.body.style.overflow = '';
-        setTimeout(() => { el.hidden = true; }, 200);
-    }
+  });
 
-    /* ==========================================
-       TOASTS
-       ========================================== */
-    const toastContainer = document.getElementById('toastContainer');
-    function toast(type, title, message, timeout = 3500) {
-        const el = document.createElement('div');
-        el.className = `toast ${type}`;
-        el.innerHTML = `
-            <span class="toast-icon" aria-hidden="true">
-                ${type === 'success'
-                    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1e5a3a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
-                    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9b1c1c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`}
-            </span>
-            <div class="toast-text"><strong>${title}</strong>${message}</div>
-        `;
-        toastContainer.appendChild(el);
-        setTimeout(() => {
-            el.classList.add('leaving');
-            setTimeout(() => el.remove(), 250);
-        }, timeout);
-    }
-
-    /* ==========================================
-       KEYBOARD
-       ========================================== */
-    document.addEventListener('keydown', (e) => {
-        const tag = (e.target.tagName || '').toLowerCase();
-        const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-        if (typing && e.key !== 'Escape') return;
-
-        if (e.key === '/') {
-            e.preventDefault();
-            document.getElementById('globalSearch')?.focus();
-        }
-        if (e.key === 'Escape') {
-            closeSidebar();
-            closeUserDrawer();
-            closeStepup();
-            closeConfirm();
-        }
-    });
-
-    /* ==========================================
-       LAST UPDATED TICKER
-       ========================================== */
-    const lastUpdated = document.getElementById('lastUpdated');
-    let secs = 0;
-    setInterval(() => {
-        secs++;
-        lastUpdated.textContent = secs < 5
-            ? 'Data refreshed just now'
-            : `Data refreshed ${secs}s ago`;
-    }, 1000);
+  load().catch(error => {
+    console.error('[CMDI Admin Dashboard]', error);
+    showGate(error.message || 'Could not load Admin dashboard.', true);
+  });
 });
