@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="CSS/staff-theme.css">
+<link rel="stylesheet" href="CSS/staff-housekeeping-summary.css">
 <link rel="stylesheet" href="CSS/staff-dashboard.css">
 <link rel="stylesheet" href="CSS/notification.css">
 </head>
@@ -204,7 +205,7 @@
             </section>
 
             <!-- ============ KPI ROW ============ -->
-            <section class="kpi-row" aria-label="Key performance indicators">
+            <section class="kpi-row" id="genericKpiRow" aria-label="Key performance indicators">
                 <button class="kpi-card" data-filter="all">
                     <span class="kpi-label">Bed allocation</span>
                     <span class="kpi-value">0<span class="kpi-suffix">%</span></span>
@@ -239,6 +240,49 @@
                     <span class="kpi-sub">0 urgent</span>
                     <span class="kpi-spark spark-blue"></span>
                 </button>
+            </section>
+
+            <!-- ============ HOUSEKEEPING SUMMARY (HOUSEKEEPING ROLE ONLY) ============ -->
+            <section class="hk-summary" id="housekeepingSummary" aria-labelledby="housekeepingSummaryTitle" hidden>
+                <div class="hk-summary-heading">
+                    <div>
+                        <span class="hk-eyebrow">DAILY OPERATIONS</span>
+                        <h2 id="housekeepingSummaryTitle">Housekeeping overview</h2>
+                        <p>Track room cleaning progress and your assigned Housekeeping work.</p>
+                    </div>
+                    <div class="hk-summary-actions">
+                        <a class="hk-action-link" href="staff-rooms.html">Open Rooms</a>
+                        <a class="hk-action-link hk-action-link-primary" href="staff-requests.html">Open Service Requests</a>
+                    </div>
+                </div>
+                <div class="hk-summary-grid" aria-live="polite">
+                    <article class="hk-stat-card">
+                        <span class="hk-stat-label">Rooms awaiting cleaning</span>
+                        <strong class="hk-stat-value" id="hkRoomsAwaiting">—</strong>
+                        <span class="hk-stat-note">Vacant-dirty rooms · Floors 2–3</span>
+                    </article>
+                    <article class="hk-stat-card">
+                        <span class="hk-stat-label">Rooms currently being cleaned</span>
+                        <strong class="hk-stat-value" id="hkRoomsCleaning">—</strong>
+                        <span class="hk-stat-note">Active cleaning work orders</span>
+                    </article>
+                    <article class="hk-stat-card">
+                        <span class="hk-stat-label">Rooms cleaned today</span>
+                        <strong class="hk-stat-value" id="hkRoomsCleanedToday">—</strong>
+                        <span class="hk-stat-note">Completed by your account today</span>
+                    </article>
+                    <article class="hk-stat-card">
+                        <span class="hk-stat-label">Assigned service requests</span>
+                        <strong class="hk-stat-value" id="hkAssignedRequests">—</strong>
+                        <span class="hk-stat-note">Assigned or in progress · Your queue</span>
+                    </article>
+                    <article class="hk-stat-card">
+                        <span class="hk-stat-label">Completed cleaning tasks</span>
+                        <strong class="hk-stat-value" id="hkCompletedTasks">—</strong>
+                        <span class="hk-stat-note">Housekeeping requests completed today</span>
+                    </article>
+                </div>
+                <p class="hk-summary-footnote" id="hkSummaryMessage" role="status">Loading Housekeeping summary…</p>
             </section>
 
             <!-- ============ MAIN GRID ============ -->
