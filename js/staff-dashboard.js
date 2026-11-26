@@ -62,8 +62,6 @@
         summary: {},
         visibility: {},
         approvalQueueError: null,
-        housekeepingSummary: null,
-        housekeepingSummaryError: null,
         lastSuccessfulFetch: 0
     };
 
@@ -193,20 +191,6 @@
             state.visibility = data.visibility && typeof data.visibility === 'object'
                 ? data.visibility
                 : { guest_details: false, room_requests: false, group_bookings: false, guest_requests: false, assigned_guests: false, service_scope: 'none' };
-
-            state.housekeepingSummary = null;
-            state.housekeepingSummaryError = null;
-            if (String(staff.role || '').toLowerCase() === 'housekeeping') {
-                try {
-                    const { data: hkData, error: hkError } = await client.rpc('get_housekeeping_dashboard_summary');
-                    if (hkError) throw hkError;
-                    if (!hkData || hkData.ok !== true) throw new Error(hkData?.message || 'Housekeeping summary returned no data.');
-                    state.housekeepingSummary = hkData;
-                } catch (hkError) {
-                    state.housekeepingSummaryError = hkError.message || 'Could not load Housekeeping summary.';
-                    console.error('Housekeeping summary unavailable:', hkError);
-                }
-            }
 
             rooms = {};
             (Array.isArray(data.rooms) ? data.rooms : []).forEach(room => {
@@ -654,50 +638,7 @@
             '<li class="empty-state" style="grid-column:1/-1;"><p class="empty-title">Activity log is not connected yet</p><p class="empty-sub">The audit_log table schema has not been confirmed for dashboard display. Staff actions will not be simulated here.</p></li>';
     }
 
-    function renderHousekeepingSummary() {
-        const isHousekeeping = String(staff.role || '').toLowerCase() === 'housekeeping';
-        const panel = $('#housekeepingSummary');
-        const genericKpis = $('#genericKpiRow');
-        if (!panel || !genericKpis) return;
-
-        panel.hidden = !isHousekeeping;
-        genericKpis.hidden = isHousekeeping;
-        if (!isHousekeeping) return;
-
-        const summary = state.housekeepingSummary;
-        const value = (key) => summary && Number.isFinite(Number(summary[key]))
-            ? String(Number(summary[key]))
-            : '—';
-
-        $('#hkRoomsAwaiting').textContent = value('rooms_awaiting_cleaning');
-        $('#hkRoomsCleaning').textContent = value('rooms_currently_being_cleaned');
-        $('#hkRoomsCleanedToday').textContent = value('rooms_cleaned_today');
-        $('#hkAssignedRequests').textContent = value('assigned_service_requests');
-        $('#hkCompletedTasks').textContent = value('completed_cleaning_tasks_today');
-
-        const message = $('#hkSummaryMessage');
-        if (state.housekeepingSummaryError) {
-            message.textContent = `Summary unavailable: ${state.housekeepingSummaryError}. Run sql/housekeeping_dashboard_summary.sql, then refresh.`;
-            message.classList.add('is-error');
-        } else if (summary) {
-            const updated = summary.generated_at ? formatDateTime(summary.generated_at) : 'just now';
-            message.textContent = `Live summary · Updated ${updated} · Counts use Philippine time.`;
-            message.classList.remove('is-error');
-        } else {
-            message.textContent = 'Housekeeping summary is loading.';
-            message.classList.remove('is-error');
-        }
-
-        const welcomeTitle = $('.dashboard-welcome h2');
-        const welcomeText = $('.dashboard-welcome p');
-        if (welcomeTitle) welcomeTitle.textContent = 'Housekeeping overview';
-        if (welcomeText) welcomeText.textContent = 'Track room cleaning progress and assigned Housekeeping work across Floors 2 and 3.';
-        const checkinButton = $('#newCheckinBtn');
-        if (checkinButton) checkinButton.hidden = true;
-    }
-
     function renderAll() {
-        renderHousekeepingSummary();
         renderQueue();
         renderKpis();
         renderOverdue();

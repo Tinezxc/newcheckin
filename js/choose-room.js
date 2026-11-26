@@ -62,28 +62,9 @@
     const EDGE_FUNCTION = 'dynamic-responder';
     const ACTIVE_GROUP_KEY = 'cmdi_active_group_booking_id';
     const GENDER_LABEL = { male: 'Men', female: 'Women' };
-    // CMDI operational inventory: only these numbered rooms may be shown to clients.
-    // The database remains authoritative; this is a display/selection guard only.
-    const OPERATIONAL_ROOM_CAPS = new Map([
-        ...Array.from({ length: 11 }, (_, index) => [String(201 + index), 5]),
-        ...Array.from({ length: 11 }, (_, index) => [String(301 + index), 3])
-    ]);
-
-    function normalizeOperationalRooms(rows) {
-        if (!Array.isArray(rows)) return [];
-        return rows.flatMap(room => {
-            const number = String(room?.room_number ?? '').trim();
-            const expectedFloorCapacity = OPERATIONAL_ROOM_CAPS.get(number);
-            const floor = Number(room?.floor);
-            const configuredCapacity = Number(room?.capacity);
-            const inactive = room?.is_active === false || room?.is_active === 0 || String(room?.is_active).toLowerCase() === 'false';
-            if (!expectedFloorCapacity || inactive || floor !== (number.startsWith('2') ? 2 : 3)) return [];
-            if (!Number.isFinite(configuredCapacity) || configuredCapacity < 1) return [];
-            const capacity = Math.min(configuredCapacity, expectedFloorCapacity);
-            const occupants = Math.max(0, Math.min(capacity, Number(room?.occupants) || 0));
-            return [{ ...room, room_number: number, floor, capacity, occupants, is_active: true }];
-        }).sort((a, b) => a.floor - b.floor || a.room_number.localeCompare(b.room_number, undefined, { numeric: true }));
-    }
+    // CMDI Hotel has accommodation rooms on Floors 2 and 3 only.
+    const ALLOWED_ROOM_FLOORS = new Set([2, 3]);
+    const isSupportedRoom = room => ALLOWED_ROOM_FLOORS.has(Number(room?.floor));
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     let session = null;
@@ -98,6 +79,7 @@
     let countdownTimer = null;
     let groupHoldExpiresAt = null;
     let isReturningToRooms = false;
+    let occupantLookupToken = 0;
     let skeleton = { show() {}, hide() {} };
 
     /* ----------------------------------------------------------
@@ -283,7 +265,136 @@
         const dots = createBedDots(selectedRoom);
         dots.classList.add('drawer-bed-dots');
 
-        selectedRoomSummary.append(top, description, capacity, dots);
+        const occupantsPanel = document.createElement('section');
+        occupantsPanel.className = 'room-occupants-preview';
+        occupantsPanel.dataset.roomOccupants = 'true';
+
+        const occupantsHeader = document.createElement('div');
+        occupantsHeader.className = 'room-occupants-heading';
+
+        const occupantsTitle = document.createElement('h3');
+        occupantsTitle.textContent = 'Currently in this room';
+
+        const occupantsNote = document.createElement('p');
+        occupantsNote.className = 'room-occupants-privacy';
+        occupantsNote.textContent = 'Names of currently checked-in trainees only. Pending bookings are not shown.';
+
+        const occupantsList = document.createElement('div');
+        occupantsList.className = 'room-occupants-list';
+        occupantsList.dataset.roomOccupantsList = 'true';
+        occupantsList.setAttribute('aria-live', 'polite');
+
+        const roomOccupants = Math.max(0, Number(selectedRoom.occupants) || 0);
+        const roomStatus = String(selectedRoom.status || '').toLowerCase();
+        if (roomOccupants > 0 || ['occupied', 'overdue'].includes(roomStatus)) {
+            occupantsList.textContent = 'Checking current occupants…';
+        } else {
+            occupantsList.textContent = 'No current checked-in trainees.';
+        }
+
+        occupantsHeader.appendChild(occupantsTitle);
+        occupantsPanel.append(occupantsHeader, occupantsNote, occupantsList);
+        selectedRoomSummary.append(top, description, capacity, dots, occupantsPanel);
+    }
+
+    function initialsForName(value) {
+        return String(value || 'CMDI Trainee')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map(part => part[0].toUpperCase())
+            .join('') || 'CT';
+    }
+
+    function renderSelectedRoomOccupants(room, result) {
+        if (!selectedRoomSummary || !selectedRoom ||
+            String(selectedRoom.room_number) !== String(room.room_number)) return;
+
+        const list = selectedRoomSummary.querySelector('[data-room-occupants-list]');
+        if (!list) return;
+        list.replaceChildren();
+
+        if (result?.can_view_names !== true) {
+            const message = document.createElement('p');
+            message.className = 'room-occupants-empty';
+            message.textContent = result?.message || 'Occupant names are not available for this room.';
+            list.appendChild(message);
+            return;
+        }
+
+        const people = Array.isArray(result.occupants) ? result.occupants : [];
+        if (!people.length) {
+            const message = document.createElement('p');
+            message.className = 'room-occupants-empty';
+            message.textContent = result.message || 'No verified active check-in names are recorded for this room.';
+            list.appendChild(message);
+            return;
+        }
+
+        people.forEach(person => {
+            const row = document.createElement('div');
+            row.className = 'room-occupant-row';
+
+            const avatar = document.createElement('span');
+            avatar.className = 'room-occupant-avatar';
+            avatar.textContent = initialsForName(person.name);
+            avatar.setAttribute('aria-hidden', 'true');
+
+            const name = document.createElement('strong');
+            name.className = 'room-occupant-name';
+            name.textContent = person.name || 'CMDI Trainee';
+
+            row.append(avatar, name);
+            list.appendChild(row);
+        });
+
+        const unlisted = Math.max(0, Number(result.unlisted_occupants) || 0);
+        if (unlisted > 0) {
+            const note = document.createElement('p');
+            note.className = 'room-occupants-empty';
+            note.textContent = `${unlisted} occupant(s) have no individually linked name in the active stay records. Ask Front Desk to verify.`;
+            list.appendChild(note);
+        } else if (result.message) {
+            const note = document.createElement('p');
+            note.className = 'room-occupants-empty';
+            note.textContent = result.message;
+            list.appendChild(note);
+        }
+    }
+
+    async function loadSelectedRoomOccupants(room) {
+        if (!room || !selectedRoomSummary) return;
+        const requestToken = ++occupantLookupToken;
+        const roomNumber = String(room.room_number);
+        const list = selectedRoomSummary.querySelector('[data-room-occupants-list]');
+        if (!list) return;
+
+        const roomOccupants = Math.max(0, Number(room.occupants) || 0);
+        const roomStatus = String(room.status || '').toLowerCase();
+        if (roomOccupants <= 0 && !['occupied', 'overdue'].includes(roomStatus)) {
+            list.textContent = 'No current checked-in trainees.';
+            return;
+        }
+
+        list.textContent = 'Loading names of current occupants…';
+        try {
+            const { data, error } = await db.rpc('get_room_occupants_for_selection', {
+                p_room_number: roomNumber
+            });
+            if (requestToken !== occupantLookupToken ||
+                !selectedRoom || String(selectedRoom.room_number) !== roomNumber) return;
+            if (error) throw error;
+            if (!data || data.ok !== true) {
+                throw new Error(data?.message || 'The occupant list could not be verified.');
+            }
+            renderSelectedRoomOccupants(room, data);
+        } catch (error) {
+            console.error('[CMDI Choose Room] Occupant lookup failed:', error);
+            if (requestToken !== occupantLookupToken ||
+                !selectedRoom || String(selectedRoom.room_number) !== roomNumber) return;
+            list.textContent = error.message || 'Current occupant names are temporarily unavailable. Please contact Front Desk.';
+        }
     }
 
     function parseInviteeEmails() {
@@ -485,6 +596,14 @@
             };
         }
 
+        if (!getRoomState(selectedRoom).selectable) {
+            return {
+                ok: false,
+                emails,
+                message: 'This room is not available for booking. You can still view its current occupants, but choose an eligible room to continue.'
+            };
+        }
+
         const groupSize = emails.length + 1;
         const freeBeds = Number(selectedRoom.capacity) - Number(selectedRoom.occupants);
 
@@ -546,7 +665,7 @@
         }
 
         if (bookingMode === 'individual') {
-            confirmBtn.disabled = !myGender;
+            confirmBtn.disabled = !myGender || !getRoomState(selectedRoom).selectable;
             confirmBtn.textContent = 'Confirm Selection';
             return;
         }
@@ -587,6 +706,10 @@
        ---------------------------------------------------------- */
 
     function getRoomState(room) {
+        if (!isSupportedRoom(room)) {
+            return { label: 'Floor unavailable', cls: 'status-full', selectable: false };
+        }
+
         const taken = Number(room.occupants || 0);
         const capacity = Number(room.capacity || 0);
         const roomGender = room.room_gender;
@@ -642,8 +765,9 @@
     function renderRooms(rooms) {
         roomGrid.replaceChildren();
         const floors = new Map();
+        const displayRooms = (Array.isArray(rooms) ? rooms : []).filter(isSupportedRoom);
 
-        rooms.forEach(room => {
+        displayRooms.forEach(room => {
             const floor = Number(room.floor);
             if (!floors.has(floor)) floors.set(floor, []);
             floors.get(floor).push(room);
@@ -657,10 +781,10 @@
             heading.className = 'floor-heading';
 
             const title = document.createElement('span');
-            title.textContent = `Floor ${floor} · ${floor === 2 ? 'Maximum 5 occupants per room' : 'Maximum 3 occupants per room'}`;
+            title.textContent = `Floor ${floor}`;
 
             const count = document.createElement('small');
-            count.textContent = `${open} of ${list.length} rooms available · ${floor === 2 ? '5 max / room' : '3 max / room'}`;
+            count.textContent = `${open} of ${list.length} rooms open to you`;
 
             heading.append(title, count);
             roomGrid.appendChild(heading);
@@ -672,7 +796,11 @@
                 const card = document.createElement('button');
                 card.type = 'button';
                 card.className = 'room-card' + (state.selectable ? '' : ' unavailable');
-                card.disabled = !state.selectable || Boolean(activeGroupId);
+                // Full or incompatible rooms remain inspectable so a new client can
+                // see the room details. Booking eligibility is enforced by the
+                // confirm-button and server-side booking checks.
+                card.disabled = Boolean(activeGroupId);
+                card.setAttribute('aria-disabled', String(!state.selectable));
                 card.setAttribute(
                     'aria-pressed',
                     String(selectedRoom?.room_number === room.room_number)
@@ -696,14 +824,15 @@
 
                 card.append(number, info, createBedDots(room), status);
 
-                if (state.selectable) {
+                if (!activeGroupId) {
                     card.addEventListener('click', () => {
                         selectedRoom = room;
-                        renderRooms(rooms);
+                        renderRooms(displayRooms);
                         updateSelectedRoomSummary();
                         updateGroupSummary();
                         updateConfirmButton();
                         openRoomDrawer();
+                        loadSelectedRoomOccupants(room);
                     });
                 }
 
@@ -754,16 +883,19 @@
             return;
         }
 
-        const operationalRooms = normalizeOperationalRooms(rooms);
-        if (!operationalRooms.length) {
+        const hotelRooms = Array.isArray(rooms)
+            ? rooms.filter(isSupportedRoom)
+            : [];
+
+        if (hotelRooms.length === 0) {
             renderInlineNotice(
-                'No operational rooms are currently available. CMDI room inventory is limited to Rooms 201–211 on Floor 2 and Rooms 301–311 on Floor 3. Please contact the front desk if this appears incorrect.',
+                'No rooms on Floors 2 or 3 are currently available to display. Please contact the front desk.',
                 'error'
             );
             return;
         }
 
-        renderRooms(operationalRooms);
+        renderRooms(hotelRooms);
         updateSelectedRoomSummary();
         updateGroupSummary();
         updateConfirmButton();
@@ -828,6 +960,9 @@
     async function submitIndividualBooking() {
         if (!selectedRoom) {
             throw new Error('Please select a room first.');
+        }
+        if (!getRoomState(selectedRoom).selectable) {
+            throw new Error('This room is not available for booking. Please select an eligible room.');
         }
 
         confirmBtn.disabled = true;

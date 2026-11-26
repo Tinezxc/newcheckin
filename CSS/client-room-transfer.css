@@ -1,0 +1,30 @@
+/* CMDI Client Dashboard — roommates and room transfer */
+.roommates-section,.room-transfer-section{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
+.roommates-section[hidden],.room-transfer-section[hidden]{display:none!important}
+.roommates-heading,.room-transfer-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.roommates-heading h3,.room-transfer-heading h3{margin:0;color:var(--green);font-size:15px;font-weight:700}
+.roommates-caption{margin:0 0 12px;color:var(--muted);font-size:11px;line-height:1.6}
+.roommates-count{padding:6px 9px;border-radius:999px;background:var(--soft);color:var(--green);font-size:10px;font-weight:800;white-space:nowrap}
+.roommates-list{display:grid;gap:8px}
+.roommate-row{display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;min-width:0}
+.roommate-avatar{width:36px;height:36px;flex:0 0 36px;border-radius:50%;display:grid;place-items:center;background:var(--soft);color:var(--green);font-size:11px;font-weight:800}
+.roommate-name-wrap{display:grid;gap:3px;min-width:0;flex:1}
+.roommate-name-wrap strong{color:var(--ink);font-size:12px;overflow-wrap:anywhere}
+.roommate-name-wrap small{color:var(--muted);font-size:10px}
+.roommate-you{font-size:9px;font-weight:800;letter-spacing:.08em;color:#20653e;background:#e7f4eb;border-radius:999px;padding:5px 8px}
+.room-transfer-heading{margin-bottom:7px}
+.room-transfer-icon{width:34px;height:34px;flex:0 0 34px;border-radius:10px;background:var(--soft);display:grid;place-items:center;color:var(--green);font-size:21px}
+.room-transfer-form{display:grid;gap:9px;margin-top:12px}
+.room-transfer-form label{font-size:11px;font-weight:750;color:var(--ink)}
+.room-transfer-form select,.room-transfer-form textarea{width:100%;min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font:inherit;font-size:12px}
+.room-transfer-form textarea{resize:vertical;line-height:1.5}
+.room-transfer-form button{width:100%;margin-top:3px}
+.room-transfer-status{margin-top:10px;padding:10px 12px;border-radius:9px;background:#f1f5f1;color:var(--green);font-size:11px;line-height:1.55}
+.room-transfer-status[hidden]{display:none}
+.room-transfer-status.error{background:#fff0ee;color:#8d3028}
+.room-transfer-status.info{background:#f3f4f1;color:#5d6c62}
+.room-transfer-pending{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:12px;border:1px solid #ead8b5;border-radius:11px;background:#fff9ef}
+.room-transfer-pending[hidden]{display:none}
+.room-transfer-pending p{margin:7px 0 0;color:#6e5b3c;font-size:11px;line-height:1.5}
+.room-transfer-pending .portal-btn{flex:0 0 auto;padding:9px 12px;font-size:10px}
+@media(max-width:560px){.room-transfer-pending{align-items:stretch;flex-direction:column}.room-transfer-pending .portal-btn{width:100%}}

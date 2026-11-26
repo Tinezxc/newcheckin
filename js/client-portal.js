@@ -151,6 +151,184 @@
     window.addEventListener('afterprint', () => document.body.classList.remove('guest-qr-printing'));
   }
 
+  // Dashboard-only shared-room information and client room-transfer workflow.
+  let currentRoomShare = null;
+
+  function setTransferMessage(message, type = '') {
+    const el = $('roomTransferStatus');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'room-transfer-status' + (type ? ` ${type}` : '');
+    el.hidden = !message;
+  }
+
+  function renderRoommates(share) {
+    const section = $('roommatesSection');
+    const list = $('roommatesList');
+    const count = $('roommatesCount');
+    if (!section || !list) return;
+
+    if (!share?.room) {
+      section.hidden = true;
+      return;
+    }
+
+    section.hidden = false;
+    const people = Array.isArray(share.roommates) ? share.roommates : [];
+    if (count) count.textContent = `${Number(share.room?.occupants || people.length)} / ${Number(share.room?.capacity || 0)} assigned`;
+    list.replaceChildren();
+
+    if (!people.length) {
+      const empty = document.createElement('p');
+      empty.className = 'portal-empty';
+      empty.textContent = 'No other room members are recorded yet.';
+      list.appendChild(empty);
+      return;
+    }
+
+    people.forEach(person => {
+      const row = document.createElement('div');
+      row.className = 'roommate-row';
+      const avatar = document.createElement('span');
+      avatar.className = 'roommate-avatar';
+      avatar.textContent = initials(person.name);
+      const nameWrap = document.createElement('span');
+      nameWrap.className = 'roommate-name-wrap';
+      const name = document.createElement('strong');
+      name.textContent = person.name || 'CMDI Trainee';
+      const sub = document.createElement('small');
+      sub.textContent = person.is_you ? 'You' : 'Roommate';
+      nameWrap.append(name, sub);
+      row.append(avatar, nameWrap);
+      if (person.is_you) {
+        const you = document.createElement('span');
+        you.className = 'roommate-you';
+        you.textContent = 'YOU';
+        row.appendChild(you);
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function renderRoomTransfer(share) {
+    const section = $('roomTransferSection');
+    const form = $('roomTransferForm');
+    const select = $('transferTargetRoom');
+    const pendingWrap = $('roomTransferPending');
+    if (!section || !form || !select || !pendingWrap) return;
+
+    section.hidden = !share?.room;
+    if (!share?.room) return;
+
+    const latest = share.latest_transfer || null;
+    const isPending = latest?.status === 'pending';
+    pendingWrap.hidden = !isPending;
+    form.hidden = isPending || share.can_transfer !== true;
+
+    if (isPending) {
+      $('roomTransferPendingText').textContent = `Your request to move from Room ${latest.from_room} to Room ${latest.to_room} is waiting for Front Desk review.`;
+      $('cancelTransferRequest').dataset.requestId = latest.id;
+      setTransferMessage('Your current room assignment stays unchanged while the request is pending.', 'info');
+      return;
+    }
+
+    if (latest?.status === 'approved') {
+      setTransferMessage(`Your previous transfer to Room ${latest.to_room} was approved. Your current room is Room ${share.room.room_number}.`, 'success');
+    } else if (latest?.status === 'rejected') {
+      const note = latest.staff_note ? ` Front Desk note: ${latest.staff_note}` : '';
+      setTransferMessage(`Your previous request to Room ${latest.to_room} was not approved.${note}`, 'error');
+    } else if (latest?.status === 'cancelled') {
+      setTransferMessage('Your previous room transfer request was cancelled.', 'info');
+    } else {
+      setTransferMessage('', '');
+    }
+
+    if (share.can_transfer !== true) {
+      const message = share.transfer_block_reason || 'Room transfers are not currently available for this stay.';
+      select.replaceChildren(new Option(message, ''));
+      setTransferMessage(message, 'info');
+      return;
+    }
+
+    const options = Array.isArray(share.transfer_options) ? share.transfer_options : [];
+    select.replaceChildren();
+    select.add(new Option('Choose a destination room…', ''));
+    options.forEach(room => {
+      const label = `Room ${room.room_number} · Floor ${room.floor} · ${room.available_beds} bed(s) available`;
+      select.add(new Option(label, room.room_number));
+    });
+    $('submitTransferRequest').disabled = options.length === 0;
+    if (!options.length) {
+      select.replaceChildren(new Option('No compatible rooms currently available', ''));
+      setTransferMessage('No other compatible room currently has an available bed.', 'info');
+    }
+  }
+
+  async function loadRoomShare() {
+    const section = $('roommatesSection');
+    if (page !== 'dashboard' || !section) return;
+    section.hidden = false;
+    const list = $('roommatesList');
+    if (list) list.textContent = 'Loading room members…';
+    const { data, error } = await db.rpc('get_client_room_share');
+    if (error) throw error;
+    if (!data || data.ok !== true) throw new Error('Could not load your room information.');
+    currentRoomShare = data;
+    renderRoommates(data);
+    renderRoomTransfer(data);
+
+    if (data.room) {
+      setText('roomSummaryNumber', data.room.room_number);
+      setText('roomSummaryFloor', `Floor ${data.room.floor}`);
+      setText('roomSummaryCapacity', `${data.room.occupants} of ${data.room.capacity} assigned`);
+    }
+  }
+
+  async function submitRoomTransfer() {
+    const button = $('submitTransferRequest');
+    const target = $('transferTargetRoom')?.value || '';
+    const reason = $('transferReason')?.value?.trim() || null;
+    if (!target) { setTransferMessage('Choose a destination room first.', 'error'); return; }
+    button.disabled = true;
+    button.textContent = 'Submitting…';
+    try {
+      const { data, error } = await db.rpc('request_client_room_transfer', {
+        p_target_room: target,
+        p_reason: reason
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error('The transfer request was not confirmed by the database.');
+      $('transferReason').value = '';
+      setTransferMessage(`Your request to move from Room ${data.from_room} to Room ${data.to_room} was submitted. Your room will change only after Front Desk approval.`, 'success');
+      await loadRoomShare();
+    } catch (error) {
+      console.error('[CMDI room transfer] Submit failed:', error);
+      setTransferMessage(error.message || 'Could not submit the room transfer request.', 'error');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Request Room Transfer';
+    }
+  }
+
+  async function cancelRoomTransfer() {
+    const button = $('cancelTransferRequest');
+    const requestId = button?.dataset.requestId;
+    if (!requestId) return;
+    if (!window.confirm('Cancel your pending room transfer request? Your current room assignment will remain unchanged.')) return;
+    button.disabled = true;
+    try {
+      const { error } = await db.rpc('cancel_client_room_transfer', { p_request_id: requestId });
+      if (error) throw error;
+      setTransferMessage('Your room transfer request has been cancelled.', 'info');
+      await loadRoomShare();
+    } catch (error) {
+      console.error('[CMDI room transfer] Cancel failed:', error);
+      setTransferMessage(error.message || 'Could not cancel the transfer request.', 'error');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   // Backwards-compatible hook for the earlier profile.js version, which calls
   // window.openQR(guest_id, full_name).
   window.openQR = openGuestQr;
@@ -257,6 +435,20 @@
       return;
     }
     updatePage(profile,user);
+    if (page === 'dashboard') {
+      $('submitTransferRequest')?.addEventListener('click', submitRoomTransfer);
+      $('cancelTransferRequest')?.addEventListener('click', cancelRoomTransfer);
+      try {
+        await loadRoomShare();
+      } catch (shareError) {
+        console.error('[CMDI client room share]', shareError);
+        const section = $('roommatesSection');
+        const list = $('roommatesList');
+        if (section) section.hidden = false;
+        if (list) list.textContent = 'Roommate information is temporarily unavailable. Refresh or contact Front Desk.';
+        setTransferMessage(shareError.message || 'Could not load room transfer information.', 'error');
+      }
+    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {

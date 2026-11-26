@@ -1,0 +1,12 @@
+/* CMDI room selection — current occupants preview */
+.room-card.unavailable { cursor: pointer; }
+.room-card.unavailable:hover { border-color: var(--green-accent); box-shadow: 0 3px 10px rgba(75,124,92,.10); transform: translateY(-1px); }
+.room-occupants-preview { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
+.room-occupants-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.room-occupants-heading h3 { color: var(--green-dark); font-family: var(--font-serif); font-size: 1.05rem; }
+.room-occupants-privacy { margin: 0 0 11px; color: var(--text-muted); font-size: .68rem; line-height: 1.5; }
+.room-occupants-list { display: grid; gap: 8px; }
+.room-occupant-row { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: #fff; }
+.room-occupant-avatar { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: 50%; background: var(--green-light); color: var(--green-dark); font-size: .66rem; font-weight: 800; }
+.room-occupant-name { min-width: 0; color: var(--text-main); font-size: .78rem; overflow-wrap: anywhere; }
+.room-occupants-empty { margin: 0; padding: 10px 11px; border-radius: 8px; background: #f7f7f3; color: var(--text-muted); font-size: .7rem; line-height: 1.55; }

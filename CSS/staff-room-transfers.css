@@ -1,0 +1,37 @@
+/* CMDI Front Desk — Room transfer requests */
+.transfer-page-content{display:grid;gap:18px}
+.transfer-welcome{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.transfer-welcome h2{margin:7px 0 6px;color:var(--text-1,#1f2923);font-size:24px}
+.transfer-welcome p{margin:0;max-width:760px;color:var(--text-2,#5c6961);font-size:13px;line-height:1.6}
+.transfer-queue-count{padding:9px 13px;border-radius:999px;background:#f1f4f0;color:#1b3a2e;font-size:12px;font-weight:800;white-space:nowrap}
+.transfer-message{padding:12px 15px;border:1px solid #dce7de;border-radius:10px;background:#f1f7f2;color:#28553a;font-size:12px;line-height:1.5}
+.transfer-message[hidden]{display:none}
+.transfer-message.error{border-color:#efc7c2;background:#fff0ee;color:#8d3028}
+.transfer-request-list{display:grid;gap:13px}
+.transfer-empty{padding:28px 20px;text-align:center;border:1px dashed #d9e1db;border-radius:13px;background:rgba(255,255,255,.7);color:#65736b;font-size:12px;line-height:1.6}
+.transfer-empty strong{display:block;color:#1b3a2e;font-size:14px;margin-bottom:5px}
+.transfer-request-card{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:20px;padding:20px;background:#fff;border:1px solid #dfe6e1;border-radius:14px;box-shadow:0 4px 14px rgba(25,45,34,.035)}
+.transfer-request-card.is-processing{opacity:.65;pointer-events:none}
+.transfer-client{display:flex;align-items:center;gap:11px}
+.transfer-client-avatar{width:40px;height:40px;display:grid;place-items:center;border-radius:50%;background:#e8efe9;color:#1b3a2e;font-size:11px;font-weight:800}
+.transfer-client div{display:grid;gap:4px;min-width:0}
+.transfer-client strong{color:#1d3026;font-size:14px}
+.transfer-client small{color:#708078;font-size:11px}
+.transfer-route{display:flex;align-items:center;gap:18px;margin:17px 0 10px;padding:14px 16px;border-radius:11px;background:#f7f8f5}
+.transfer-route div{display:grid;gap:4px}
+.transfer-route small{color:#78857d;font-size:9px;font-weight:800;letter-spacing:.1em}
+.transfer-route strong{color:#1b3a2e;font-size:18px}
+.transfer-route>span{color:#84938a;font-size:20px}
+.transfer-request-meta{display:flex;flex-wrap:wrap;align-items:center;gap:9px;color:#758178;font-size:10px}
+.transfer-stay-pill{padding:5px 8px;border-radius:999px;background:#e7f4eb;color:#20653e;font-weight:750}
+.transfer-reason{margin:13px 0 0;padding:10px 12px;border-left:3px solid #d5e2d8;background:#fafbf9;color:#4f5e55;font-size:11px;line-height:1.6}
+.transfer-reason strong{color:#293b30}
+.transfer-reason.muted{color:#879188}
+.transfer-actions{display:flex;flex-direction:column;justify-content:center;gap:9px}
+.transfer-actions button{min-height:40px;padding:9px 12px;border:1px solid transparent;border-radius:9px;font:inherit;font-size:11px;font-weight:750;cursor:pointer}
+.transfer-actions button:disabled{opacity:.55;cursor:not-allowed}
+.transfer-approve{background:#1b3a2e;color:#fff}
+.transfer-approve:hover{background:#2b5744}
+.transfer-reject{background:#fff;color:#9b3a32;border-color:#edd0cc!important}
+.transfer-reject:hover{background:#fff4f2}
+@media(max-width:760px){.transfer-welcome{align-items:flex-start;flex-direction:column}.transfer-request-card{grid-template-columns:1fr;gap:14px;padding:15px}.transfer-actions{display:grid;grid-template-columns:1fr 1fr}.transfer-route{gap:12px}.transfer-route strong{font-size:16px}}

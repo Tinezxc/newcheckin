@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#1b3a2e">
   <title>CMDI Hotel Check-In | Overview</title>
   <link rel="stylesheet" href="CSS/client-portal.css">
+  <link rel="stylesheet" href="CSS/client-room-transfer.css">
 </head>
 <body data-client-page="dashboard">
   <div class="portal-shell">
@@ -37,7 +38,31 @@
     <div id="roomSummary" class="portal-room-display hidden"><div><small>Room on your profile</small><strong id="roomSummaryNumber">—</strong><p><span id="roomSummaryFloor">—</span> · <span id="roomSummaryCapacity">—</span></p></div><div class="portal-room-symbol">⌂</div></div>
     <div id="noRoomSummary" class="portal-empty"><strong>No room has been selected yet.</strong><p>Choose an available room to begin your accommodation request.</p><a class="portal-btn" href="choose-room.html">Choose a room</a></div>
     <p class="portal-muted" data-room-request-message hidden></p><p class="portal-muted" data-assigned-room-message hidden></p>
-    <div class="portal-note" style="margin-top:15px"><span aria-hidden="true">ⓘ</span><span>Room requests are reviewed by CMDI Front Desk. Actual check-in and check-out records are maintained by authorized staff.</span></div>
+    <section class="roommates-section" id="roommatesSection" hidden aria-labelledby="roommatesTitle">
+      <div class="roommates-heading">
+        <div><p class="portal-eyebrow">SHARED ACCOMMODATION</p><h3 id="roommatesTitle">People assigned to your room</h3></div>
+        <span class="roommates-count" id="roommatesCount">—</span>
+      </div>
+      <p class="roommates-caption">These are the active CMDI trainees recorded for your assigned room. Only names are shown; contact details are kept private.</p>
+      <div class="roommates-list" id="roommatesList"><p class="portal-muted">Loading room members…</p></div>
+    </section>
+    <section class="room-transfer-section" id="roomTransferSection" hidden aria-labelledby="roomTransferTitle">
+      <div class="room-transfer-heading"><div><p class="portal-eyebrow">ROOM CHANGE</p><h3 id="roomTransferTitle">Want to room with someone you know?</h3></div><span class="room-transfer-icon" aria-hidden="true">⇄</span></div>
+      <p class="portal-muted">Choose a compatible room with an available bed. Your request will be reviewed by Front Desk; your room will not change until it is approved.</p>
+      <div class="room-transfer-form" id="roomTransferForm">
+        <label for="transferTargetRoom">Requested destination room</label>
+        <select id="transferTargetRoom"><option value="">Loading available rooms…</option></select>
+        <label for="transferReason">Reason (optional)</label>
+        <textarea id="transferReason" rows="2" maxlength="500" placeholder="Example: I would like to room with someone I know."></textarea>
+        <button class="portal-btn" id="submitTransferRequest" type="button">Request Room Transfer</button>
+      </div>
+      <div class="room-transfer-status" id="roomTransferStatus" role="status" aria-live="polite"></div>
+      <div class="room-transfer-pending" id="roomTransferPending" hidden>
+        <div><span class="portal-status warning">Pending Front Desk review</span><p id="roomTransferPendingText"></p></div>
+        <button class="portal-btn secondary" id="cancelTransferRequest" type="button">Cancel request</button>
+      </div>
+    </section>
+    <div class="portal-note" style="margin-top:15px"><span aria-hidden="true">ⓘ</span><span>Room requests are reviewed by CMDI Front Desk. Actual check-in and check-out records are maintained by authorized staff. Room transfers require an active individual stay and Front Desk approval.</span></div>
   </article>
   <article class="portal-card span-5"><div class="portal-card-head"><div><p class="portal-eyebrow">YOUR PROGRESS</p><h2>What happens next?</h2></div></div>
     <div class="portal-steps"><div class="portal-step"><span class="portal-step-num">1</span><div><strong>Verify your registration</strong><p>Your client account must be verified before room selection.</p></div></div><div class="portal-step"><span class="portal-step-num">2</span><div><strong>Choose a room</strong><p>Select from the active Floor 2 and Floor 3 inventory, subject to capacity and room rules.</p></div></div><div class="portal-step"><span class="portal-step-num">3</span><div><strong>Wait for Front Desk review</strong><p>Your room request must be approved before staff can check you in.</p></div></div></div>

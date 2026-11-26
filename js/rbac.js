@@ -14,7 +14,7 @@
             name: 'Staff',
             initials: 'ST',
             home: 'staff-dashboard.html',
-            nav: ['dashboard', 'guests', 'scanner', 'rooms', 'checkin', 'requests'],
+            nav: ['dashboard', 'guests', 'scanner', 'rooms', 'checkin', 'requests', 'transfers'],
             // What the role can DO (used by element gating and data filtering)
             permissions: {
                 'dashboard.view': true,
@@ -28,6 +28,7 @@
                 'checkin.force': false,
                 'bookings.approve': true,
                 'registration.scan': true,
+                'room-transfers.review': true,
                 'requests.view': 'all',      // 'all' or 'housekeeping' or false
                 'requests.assign': true,
                 'reports.view': false,
@@ -52,6 +53,7 @@
                 'checkin.force': false,
                 'bookings.approve': false,
                 'registration.scan': false,
+                'room-transfers.review': false,
                 'requests.view': 'housekeeping',
                 'requests.assign': false,
                 'reports.view': false,
@@ -76,6 +78,7 @@
                 'checkin.force': false,
                 'bookings.approve': false,
                 'registration.scan': false,
+                'room-transfers.review': false,
                 'requests.view': 'maintenance',
                 'requests.assign': false,
                 'reports.view': false,
@@ -100,6 +103,7 @@
                 'checkin.force': true,
                 'bookings.approve': false,
                 'registration.scan': false,
+                'room-transfers.review': false,
                 'requests.view': 'all',
                 'requests.assign': true,
                 'reports.view': true,
@@ -115,6 +119,7 @@
         dashboard: { label: 'Dashboard',          href: 'staff-dashboard.html',        icon: 'grid' },
         guests:    { label: 'Guests',             href: 'staff-guests.html',           icon: 'users' },
         scanner:   { label: 'QR Scanner',         href: 'staff-qr-scanner.html',       icon: 'qr' },
+        transfers: { label: 'Room transfers',      href: 'staff-room-transfers.html',   icon: 'home' },
         rooms:     { label: 'Rooms',              href: 'staff-rooms.html',            icon: 'home' },
         checkin:   { label: 'Check-in / out',     href: 'staff-checkin.html',          icon: 'check' },
         requests:  { label: 'Service requests',   href: 'staff-requests.html',         icon: 'chat', badge: true },
@@ -438,8 +443,57 @@
            APPLY: immutable assigned-role display
            ========================================== */
         applyAssignedRole() {
-            const value = document.getElementById('assignedRoleValue');
-            if (value && this.getProfile()) value.textContent = this.getProfile().label;
+            const profile = this.getProfile();
+            if (!profile) return;
+
+            // Remove legacy role selectors entirely. A disabled select can still
+            // be re-enabled by an older script, so the page must not keep a select.
+            document.querySelectorAll('select#roleSelect').forEach((select) => {
+                const wrapper = select.closest('.role-select-wrap') || select.parentElement;
+                const roleBox = select.closest('.role-switcher') || wrapper?.parentElement;
+                let value = wrapper?.querySelector('#assignedRoleValue');
+                if (!value) {
+                    value = document.createElement('span');
+                    value.id = 'assignedRoleValue';
+                    value.className = 'assigned-role-value';
+                    select.replaceWith(value);
+                } else {
+                    select.remove();
+                }
+
+                if (wrapper) {
+                    wrapper.classList.add('is-locked');
+                    wrapper.setAttribute('role', 'status');
+                    wrapper.setAttribute('aria-live', 'polite');
+                    wrapper.setAttribute('aria-label', `Assigned staff role: ${profile.label}`);
+                    if (!wrapper.querySelector('.role-lock-icon')) {
+                        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                        svg.setAttribute('class', 'role-lock-icon');
+                        svg.setAttribute('width', '14');
+                        svg.setAttribute('height', '14');
+                        svg.setAttribute('viewBox', '0 0 24 24');
+                        svg.setAttribute('fill', 'none');
+                        svg.setAttribute('stroke', 'currentColor');
+                        svg.setAttribute('stroke-width', '2');
+                        svg.setAttribute('stroke-linecap', 'round');
+                        svg.setAttribute('stroke-linejoin', 'round');
+                        svg.setAttribute('aria-hidden', 'true');
+                        svg.innerHTML = '<rect x="3" y="10" width="18" height="11" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path>';
+                        wrapper.appendChild(svg);
+                    }
+                }
+
+                const roleLabel = roleBox?.querySelector('.role-label');
+                if (roleLabel) {
+                    roleLabel.textContent = 'ASSIGNED ROLE';
+                    roleLabel.removeAttribute('for');
+                }
+            });
+
+            document.querySelectorAll('#assignedRoleValue').forEach((value) => {
+                value.textContent = profile.label;
+                value.classList.add('assigned-role-value');
+            });
         },
 
         /* ==========================================

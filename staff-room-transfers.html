@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1b3a2e">
+<title>Room Transfer Requests | CMDI Staff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="CSS/staff-theme.css">
+<link rel="stylesheet" href="CSS/staff-dashboard.css">
+<link rel="stylesheet" href="CSS/staff-room-transfers.css">
+</head>
+<body>
+<div class="dashboard-layout">
+  <header class="mobile-topbar">
+    <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open menu" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg></button>
+    <span class="mobile-brand">CMDI HOTEL</span><div class="topbar-avatar">ST</div>
+  </header>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo"><div class="logo-box">C</div><div class="logo-text"><span class="logo-title">CMDI</span><span class="logo-subtitle">HOTEL OPERATIONS</span></div></div>
+    <div class="role-switcher assigned-role-card"><span class="role-label">ASSIGNED ROLE</span><div class="assigned-role-value-wrap"><span class="assigned-role-value" id="assignedRoleValue">Verifying access…</span></div><span class="assigned-role-note">Assigned by CMDI management</span></div>
+    <nav class="sidebar-nav" aria-label="Main navigation"><span class="nav-section-title">OPERATIONS</span></nav>
+    <div class="sidebar-footer"><div class="staff-chip"><div class="staff-avatar">ST</div><div class="staff-info"><span class="staff-name">Staff</span><span class="staff-role" id="staffRoleLabel">Staff</span></div></div><a href="index.html" class="nav-item logout">Sign out</a></div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+  <main class="main-content">
+    <header class="topbar"><div class="topbar-title"><span class="app-eyebrow">CMDI FRONT DESK OPERATIONS</span><h1 class="app-title">Room Transfer Requests</h1><p class="app-subtitle">Review client requests to move between shared rooms · <span id="roleBreadcrumb">Verifying…</span></p></div><div class="topbar-actions"><button class="btn btn-outline" id="refreshTransfers" type="button">Refresh</button><div class="topbar-avatar">ST</div></div></header>
+    <div class="dashboard-content transfer-page-content">
+      <section class="dashboard-welcome transfer-welcome"><div><span class="welcome-kicker">FRONT DESK REVIEW</span><h2>Pending room transfers</h2><p>Confirm the destination room still has a compatible bed before approving. The database rechecks capacity and gender rules when you decide.</p></div><span class="transfer-queue-count" id="transferQueueCount">— pending</span></section>
+      <div id="transferMessage" class="transfer-message" hidden role="status" aria-live="polite"></div>
+      <section class="transfer-request-list" id="transferRequestList"><div class="transfer-empty">Loading room transfer requests…</div></section>
+      <footer class="dashboard-footer"><span>CMDI · Staff console</span><span>Front Desk room transfer approvals</span></footer>
+    </div>
+  </main>
+</div>
+<div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/staff-core.js" defer></script>
+<script src="js/rbac.js" defer></script>
+<script src="js/staff-room-transfers.js" defer></script>
+</body>
+</html>
