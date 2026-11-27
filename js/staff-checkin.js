@@ -142,24 +142,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function openCheckin(id) {
+  function roomKey(value) {
+    return String(value ?? '').trim().toLowerCase();
+  }
+
+  async function openCheckin(id) {
+    // Refresh the arrival + room snapshot immediately before opening the modal.
+    // This prevents a stale page-load snapshot from hiding a room after its
+    // approved-reservation helper or room status has been corrected in Supabase.
+    const priorGuest = arrivals.find(g => String(g.id) === String(id));
+    if (!priorGuest) {
+      UI.toast('error', 'Guest not found', 'Refresh the check-in board and select the guest again.');
+      return;
+    }
+
+    const searchTerm = priorGuest.guest_id || priorGuest.full_name || null;
+    const fresh = await UI.rpc('staff_get_checkin_board', { p_search: searchTerm });
+    arrivals = Array.isArray(fresh.arrivals) ? fresh.arrivals : [];
+    stays = Array.isArray(fresh.active_stays) ? fresh.active_stays : [];
+    availableRooms = Array.isArray(fresh.available_rooms) ? fresh.available_rooms : [];
+    render();
+
     currentGuest = arrivals.find(g => String(g.id) === String(id));
-    if (!currentGuest) return;
+    if (!currentGuest) {
+      UI.toast('error', 'Guest is no longer awaiting check-in', 'The latest server record is not eligible for check-in. Refresh the board and review the guest status.');
+      return;
+    }
+
     $('checkinGuestId').value = currentGuest.id;
     $('checkinGuestName').textContent = currentGuest.full_name || 'Guest';
     $('checkinGuestMeta').textContent = `${currentGuest.guest_id || 'No Guest ID'} · ${currentGuest.institution || 'Institution not set'} · ${currentGuest.group_size > 1 ? `Group of ${currentGuest.group_size} · ` : ''}${currentGuest.requested_room ? `Requested Room ${currentGuest.requested_room}` : 'Walk-in / no approved room on file'}`;
+
     const requiredOccupants = Math.max(1, Number(currentGuest.group_size) || 1);
     const approvedBooking = String(currentGuest.booking_status || '').toLowerCase() === 'approved';
-    const requestedRoom = String(currentGuest.requested_room || '').toLowerCase();
+    const requestedRoom = roomKey(currentGuest.requested_room);
     const options = availableRooms.filter(room => {
-      const roomNumber = String(room.room_number).toLowerCase();
-      const roomIsReservedForThisBooking = String(room.status).toLowerCase() !== 'reserved' || (approvedBooking && requestedRoom && roomNumber === requestedRoom);
+      const roomNumber = roomKey(room.room_number);
+      const availableCapacity = Number(room.available_capacity);
+      const roomIsReservedForThisBooking = roomKey(room.status) !== 'reserved'
+        || (approvedBooking && requestedRoom && roomNumber === requestedRoom);
       const roomMatchesApprovedRequest = !approvedBooking || !requestedRoom || roomNumber === requestedRoom;
-      return Number(room.available_capacity) >= requiredOccupants && roomIsReservedForThisBooking && roomMatchesApprovedRequest;
+      return Number.isFinite(availableCapacity)
+        && availableCapacity >= requiredOccupants
+        && roomIsReservedForThisBooking
+        && roomMatchesApprovedRequest;
     });
-    $('checkinRoom').innerHTML = options.map(r => `<option value="${UI.esc(r.id)}" ${String(r.room_number).toLowerCase() === requestedRoom ? 'selected' : ''}>Room ${UI.esc(r.room_number)} · Floor ${UI.esc(r.floor)} · ${r.available_capacity} space(s) · ${UI.esc(r.status)}</option>`).join('');
-    if (!options.length) $('checkinRoom').innerHTML = `<option value="">No room has ${requiredOccupants} available space(s)${approvedBooking ? ' matching the approved request' : ''}</option>`;
-    $('completeCheckin').disabled = options.length === 0;
+
+    $('checkinRoom').innerHTML = options.map(r => `<option value="${UI.esc(r.id)}" ${roomKey(r.room_number) === requestedRoom ? 'selected' : ''}>Room ${UI.esc(r.room_number)} · Floor ${UI.esc(r.floor)} · ${Number(r.available_capacity)} space(s) · ${UI.esc(r.status)}</option>`).join('');
+
+    if (!options.length) {
+      const requestedRoomData = availableRooms.find(r => roomKey(r.room_number) === requestedRoom);
+      const detail = requestedRoomData
+        ? `Server reports ${Number(requestedRoomData.available_capacity) || 0} available space(s) for Room ${requestedRoomData.room_number} (${requestedRoomData.status}).`
+        : `The latest check-in RPC did not include requested Room ${currentGuest.requested_room || '—'} in its available_rooms list.`;
+      $('checkinRoom').innerHTML = `<option value="">No room has ${requiredOccupants} available space(s)${approvedBooking ? ' matching the approved request' : ''}</option>`;
+      $('completeCheckin').disabled = true;
+      UI.toast('error', 'No eligible room returned by Supabase', detail);
+      console.warn('[CMDI Check-in] No eligible room for guest', {
+        guestId: currentGuest.guest_id,
+        profileId: currentGuest.id,
+        bookingStatus: currentGuest.booking_status,
+        requestedRoom: currentGuest.requested_room,
+        room203: availableRooms.find(r => roomKey(r.room_number) === '203') || null,
+        availableRooms
+      });
+    } else {
+      $('completeCheckin').disabled = false;
+      console.info('[CMDI Check-in] Fresh room options loaded', {
+        guestId: currentGuest.guest_id,
+        requestedRoom: currentGuest.requested_room,
+        options: options.map(r => ({ room: r.room_number, capacity: r.capacity, available_capacity: r.available_capacity, status: r.status }))
+      });
+    }
+
     setDefaultCheckout();
     $('checkinNote').value = '';
     UI.openModal($('checkinModal'));
@@ -177,7 +232,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   $('arrivalsRows').addEventListener('click', event => {
     const btn = event.target.closest('[data-checkin-guest]');
-    if (btn) openCheckin(btn.dataset.checkinGuest);
+    if (btn) openCheckin(btn.dataset.checkinGuest).catch(error => UI.toast('error','Could not refresh check-in options',error.message));
   });
   $('activeRows').addEventListener('click', event => {
     const btn = event.target.closest('[data-checkout-stay]');
@@ -191,6 +246,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     UI.setBusy(btn,true,'Checking in…');
     try {
       const expected = new Date($('expectedCheckout').value);
+      if (!$('checkinRoom').value) throw new Error('Select an eligible room returned by Supabase before confirming check-in.');
       if (Number.isNaN(expected.getTime())) throw new Error('Choose a valid expected check-out date and time.');
       await UI.rpc('staff_check_in_guest', {
         p_guest_id: currentGuest.id,
