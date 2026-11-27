@@ -329,6 +329,164 @@
     }
   }
 
+  // Client service requests. The database derives the client's room from the
+  // active guest_stays record; the browser never submits a room number.
+  function setClientServiceFeedback(message, type = '') {
+    const el = $('clientServiceFeedback');
+    if (!el) return;
+    el.textContent = message || '';
+    el.className = 'client-service-feedback' + (type ? ` ${type}` : '');
+    el.hidden = !message;
+  }
+
+  function clientServiceStatusLabel(status) {
+    const labels = {
+      submitted: 'Submitted',
+      assigned: 'Assigned',
+      in_progress: 'In Progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled'
+    };
+    return labels[String(status || '').toLowerCase()] || 'Submitted';
+  }
+
+  function clientServiceStatusClass(status) {
+    const key = String(status || '').toLowerCase();
+    if (key === 'completed') return 'success';
+    if (key === 'assigned' || key === 'in_progress') return 'warning';
+    if (key === 'cancelled') return 'danger';
+    return 'submitted';
+  }
+
+  function formatClientServiceDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila', year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit'
+    });
+  }
+
+  function renderClientServiceRequests(data) {
+    const roomValue = $('serviceRequestRoomValue');
+    const noStay = $('serviceRequestNoStay');
+    const fieldset = $('clientServiceRequestFields');
+    const list = $('clientServiceRequestList');
+    const hasActiveStay = data?.has_active_stay === true && !!data?.room?.room_number;
+
+    if (roomValue) {
+      roomValue.textContent = hasActiveStay
+        ? `Room ${data.room.room_number} · Floor ${data.room.floor}`
+        : 'No active room recorded';
+    }
+    if (noStay) noStay.hidden = hasActiveStay;
+    if (fieldset) fieldset.disabled = !hasActiveStay;
+
+    if (!list) return;
+    list.replaceChildren();
+    const requests = Array.isArray(data?.requests) ? data.requests : [];
+    if (!requests.length) {
+      const empty = document.createElement('div');
+      empty.className = 'client-service-empty';
+      const strong = document.createElement('strong');
+      strong.textContent = 'No service requests yet';
+      const text = document.createElement('p');
+      text.textContent = hasActiveStay
+        ? 'Your submitted requests will appear here with their latest status.'
+        : 'Your request history will appear here after you submit a service request.';
+      empty.append(strong, text);
+      list.appendChild(empty);
+      return;
+    }
+
+    requests.forEach(request => {
+      const card = document.createElement('article');
+      card.className = 'client-service-request-item';
+      const top = document.createElement('div');
+      top.className = 'client-service-request-top';
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'client-service-request-title';
+      const title = document.createElement('strong');
+      title.textContent = request.type === 'maintenance' ? 'Maintenance' : 'Housekeeping';
+      const id = document.createElement('small');
+      id.textContent = `Request #${request.id}`;
+      titleWrap.append(title, id);
+      const badge = document.createElement('span');
+      badge.className = `portal-status service-status ${clientServiceStatusClass(request.status)}`;
+      badge.textContent = clientServiceStatusLabel(request.status);
+      top.append(titleWrap, badge);
+
+      const details = document.createElement('p');
+      details.className = 'client-service-request-details';
+      details.textContent = request.details || 'No description provided.';
+
+      const meta = document.createElement('div');
+      meta.className = 'client-service-request-meta';
+      const room = document.createElement('span');
+      room.textContent = 'Accommodation service';
+      const date = document.createElement('span');
+      date.textContent = formatClientServiceDate(request.created_at);
+      meta.append(room, date);
+
+      card.append(top, details, meta);
+      list.appendChild(card);
+    });
+  }
+
+  async function loadClientServiceRequests({ quiet = false } = {}) {
+    if (page !== 'dashboard' || !$('clientServiceRequestsCard')) return;
+    const { data, error } = await db.rpc('get_my_client_service_requests');
+    if (error) throw error;
+    if (!data || data.ok !== true) throw new Error('Could not load your service request history.');
+    renderClientServiceRequests(data);
+    if (!quiet) setClientServiceFeedback('Your service request information is up to date.', 'info');
+  }
+
+  async function submitClientServiceRequest(event) {
+    event.preventDefault();
+    const button = $('submitClientServiceRequest');
+    const details = $('clientServiceDetails')?.value?.trim() || '';
+    const type = document.querySelector('input[name="clientServiceType"]:checked')?.value || '';
+    if (!['housekeeping', 'maintenance'].includes(type)) {
+      setClientServiceFeedback('Choose Housekeeping or Maintenance.', 'error');
+      return;
+    }
+    if (details.length < 8 || details.length > 1000) {
+      setClientServiceFeedback('Please describe your request using 8 to 1,000 characters.', 'error');
+      $('clientServiceDetails')?.focus();
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Submitting…';
+    setClientServiceFeedback('', '');
+    try {
+      const { data, error } = await db.rpc('create_client_service_request', {
+        p_type: type,
+        p_details: details
+      });
+      if (error) throw error;
+      if (!data || data.ok !== true) throw new Error('The database did not confirm your service request.');
+
+      $('clientServiceDetails').value = '';
+      const team = type === 'housekeeping' ? 'Housekeeping' : 'Maintenance';
+      setClientServiceFeedback(`Request #${data.request_id} submitted to ${team} for processing. Your room is ${data.room_number}.`, 'success');
+      try {
+        await loadClientServiceRequests({ quiet: true });
+      } catch (refreshError) {
+        console.warn('[CMDI Client Service Request] Request saved, but list refresh failed:', refreshError);
+        setClientServiceFeedback(`Request #${data.request_id} was submitted successfully. Refresh the request history to see its latest status.`, 'success');
+      }
+    } catch (error) {
+      console.error('[CMDI Client Service Request] Submit failed:', error);
+      setClientServiceFeedback(error.message || 'Could not submit your service request. Please refresh and try again.', 'error');
+    } finally {
+      button.disabled = $('clientServiceRequestFields')?.disabled === true;
+      button.textContent = 'Submit Service Request';
+    }
+  }
+
   // Backwards-compatible hook for the earlier profile.js version, which calls
   // window.openQR(guest_id, full_name).
   window.openQR = openGuestQr;
@@ -438,6 +596,20 @@
     if (page === 'dashboard') {
       $('submitTransferRequest')?.addEventListener('click', submitRoomTransfer);
       $('cancelTransferRequest')?.addEventListener('click', cancelRoomTransfer);
+      $('clientServiceRequestForm')?.addEventListener('submit', submitClientServiceRequest);
+      $('refreshClientServiceRequests')?.addEventListener('click', async () => {
+        const button = $('refreshClientServiceRequests');
+        button.disabled = true;
+        try {
+          await loadClientServiceRequests();
+        } catch (error) {
+          console.error('[CMDI Client Service Request] Refresh failed:', error);
+          setClientServiceFeedback(error.message || 'Could not refresh your requests.', 'error');
+        } finally {
+          button.disabled = false;
+        }
+      });
+
       try {
         await loadRoomShare();
       } catch (shareError) {
@@ -448,6 +620,18 @@
         if (list) list.textContent = 'Roommate information is temporarily unavailable. Refresh or contact Front Desk.';
         setTransferMessage(shareError.message || 'Could not load room transfer information.', 'error');
       }
+
+      try {
+        await loadClientServiceRequests({ quiet: true });
+      } catch (requestError) {
+        console.error('[CMDI Client Service Request] Initial load failed:', requestError);
+        const list = $('clientServiceRequestList');
+        if (list) list.textContent = 'Your service request history is temporarily unavailable. Please refresh.';
+        setClientServiceFeedback(requestError.message || 'Could not load your service requests.', 'error');
+      }
+      window.setInterval(() => {
+        loadClientServiceRequests({ quiet: true }).catch(error => console.warn('[CMDI Client Service Request] Auto-refresh:', error));
+      }, 60000);
     }
   }
 

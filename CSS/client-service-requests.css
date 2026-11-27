@@ -1,0 +1,50 @@
+/* CMDI Client Dashboard — Service Request Form and Status Tracking */
+.client-service-card .portal-card-head{align-items:flex-start}
+.service-card-icon{width:40px;height:40px;flex:0 0 40px;display:grid;place-items:center;border-radius:12px;background:var(--soft);color:var(--green);font-size:21px}
+.client-service-form{margin-top:4px}
+.client-service-fieldset{border:0;padding:0;margin:0;min-width:0}
+.client-service-fieldset:disabled{opacity:.68}
+.client-service-fieldset legend{padding:0;margin:0 0 11px;color:var(--ink);font-size:12px;font-weight:800}
+.service-type-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.service-type-option{position:relative;display:flex;align-items:flex-start;gap:11px;min-width:0;padding:15px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;transition:border-color .16s,background .16s}
+.service-type-option:has(input:checked){border-color:#6d8f7a;background:#f4f8f4;box-shadow:inset 0 0 0 1px #6d8f7a}
+.service-type-option input{position:absolute;top:13px;right:13px;accent-color:var(--green)}
+.service-type-icon{width:38px;height:38px;flex:0 0 38px;border-radius:10px;background:var(--soft);display:grid;place-items:center;color:var(--green);font-size:19px}
+.service-type-copy{display:grid;gap:5px;padding-right:13px;min-width:0}
+.service-type-copy strong{color:var(--green);font-size:12px;font-weight:800}
+.service-type-copy small{color:var(--muted);font-size:10px;line-height:1.55}
+.service-room-context{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;margin:3px 0 15px;border:1px solid var(--line);border-radius:11px;background:#f8faf7}
+.service-room-context>span:first-child{display:grid;gap:4px}
+.service-room-context small{color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.service-room-context strong{color:var(--green);font-size:13px}
+.service-room-lock{padding:5px 8px;border-radius:999px;background:#e8f0e9;color:#46634f;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.client-service-fieldset>label{display:block;margin:0 0 7px;color:var(--ink);font-size:11px;font-weight:800}
+.client-service-fieldset textarea{display:block;width:100%;min-height:105px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font:inherit;font-size:12px;line-height:1.6;resize:vertical}
+.client-service-fieldset textarea:focus{outline:2px solid rgba(47,94,70,.14);border-color:#71937b}
+.service-form-footer{display:flex;align-items:center;justify-content:space-between;gap:13px;margin-top:12px}
+.service-form-footer small{max-width:390px;color:var(--muted);font-size:10px;line-height:1.5}
+.service-form-footer .portal-btn{flex:0 0 auto}
+.service-no-stay{margin:0 0 15px;padding:11px 13px;border-radius:10px;border:1px solid #eadbbd;background:#fff8eb;color:#805c25;font-size:11px;line-height:1.55}
+.service-no-stay[hidden]{display:none!important}
+.client-service-feedback{margin:13px 0 0;padding:11px 13px;border:1px solid #d8e8dc;border-radius:10px;background:#f0f7f1;color:#28563a;font-size:11px;line-height:1.55}
+.client-service-feedback[hidden]{display:none!important}
+.client-service-feedback.error{border-color:#efc7c2;background:#fff0ee;color:#8d3028}
+.client-service-feedback.info{border-color:var(--line);background:#f7f8f5;color:var(--muted)}
+.client-service-history-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:23px 0 12px;padding-top:18px;border-top:1px solid var(--line)}
+.client-service-history-head .portal-eyebrow{margin:0 0 4px}
+.client-service-history-head h3{margin:0;color:var(--green);font-size:14px}
+.service-refresh-btn{padding:8px 12px;font-size:10px;flex:0 0 auto}
+.client-service-request-list{display:grid;gap:10px}
+.client-service-empty{padding:18px;border:1px dashed var(--line);border-radius:11px;text-align:center}
+.client-service-empty strong{display:block;margin-bottom:5px;color:var(--green);font-size:12px}
+.client-service-empty p{margin:0;color:var(--muted);font-size:10px;line-height:1.5}
+.client-service-request-item{padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:#fff;min-width:0}
+.client-service-request-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.client-service-request-title{display:grid;gap:4px;min-width:0}
+.client-service-request-title strong{color:var(--green);font-size:12px}
+.client-service-request-title small{color:var(--muted);font-size:9px}
+.service-status{white-space:nowrap}
+.service-status.submitted{background:#eef2ef;color:#53625a}
+.client-service-request-details{margin:10px 0 9px;color:var(--ink);font-size:11px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.client-service-request-meta{display:flex;flex-wrap:wrap;gap:8px 16px;color:var(--muted);font-size:9px}
+@media(max-width:620px){.service-type-options{grid-template-columns:1fr}.service-form-footer{align-items:stretch;flex-direction:column}.service-form-footer .portal-btn{width:100%}.client-service-history-head{align-items:flex-start}}
